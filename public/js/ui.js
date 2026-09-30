@@ -33,10 +33,13 @@ export function storage(kind) {
 // The manila folder that holds the job opening.
 export function JobCard({ job, employerName = '', size = '' }) {
   const { lang, T } = useLang();
+  const title = jobText(lang, job, employerName);
+  const longestWord = Math.max(...title.split(/\s+/).map((w) => w.length));
+  const isLong = title.length > 26 || longestWord > 11;
   return html`
     <div class="job-card ${size}">
       <span class="job-tab">${T('jobOpening')}</span>
-      <p class="job-title">${jobText(lang, job, employerName)}</p>
+      <p class="job-title ${isLong ? 'is-long' : ''}">${title}</p>
     </div>
   `;
 }
@@ -46,8 +49,10 @@ export function JobCard({ job, employerName = '', size = '' }) {
 export function QualCard({ id, onClick, selected = false, pending = false, label, tilt = 0 }) {
   const { lang } = useLang();
   const faceDown = id == null;
+  const text = faceDown ? '' : qualText(lang, id);
   const className = [
     'qcard',
+    text.length > 30 && 'is-long',
     faceDown && 'is-down',
     selected && 'is-selected',
     pending && 'is-pending',
@@ -59,7 +64,7 @@ export function QualCard({ id, onClick, selected = false, pending = false, label
   const faces = html`
     <span class="qcard-inner">
       <span class="qcard-face qcard-front">
-        <span class="qcard-text">${faceDown ? '' : qualText(lang, id)}</span>
+        <span class="qcard-text">${text}</span>
         ${label && html`<span class="qcard-hint">${label}</span>`}
       </span>
       <span class="qcard-face qcard-back" aria-hidden="true"><span>F</span></span>

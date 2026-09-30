@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { html } from 'htm/preact';
-import { JOBS, QUALS } from '/shared/cards.js';
+import { JOBS, QUALS } from './cards.js';
 import { BUY_ME_A_COFFEE_URL } from './config.js';
 import { LANGS, t, errorText, detectLang } from './i18n.js';
 import { call } from './net.js';

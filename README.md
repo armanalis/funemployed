@@ -1,29 +1,108 @@
-# Funemployed (prototype)
+<div align="center">
 
-Online party game: real jobs, ridiculous résumés. English + Turkish, no sign-up.
+# Funemployed
 
-## Run
+**Real jobs. Ridiculous résumés.**
+
+A free online party game for 3 to 12 friends. One player is hiring.<br>
+Everyone else talks their way into the job with four absurd qualifications.
+
+No sign-up · English · Türkçe · Italiano
+
+![Home page: a job folder for "Kindergarten Teacher" with four qualification cards](docs/home.png)
+
+</div>
+
+## How to play
+
+1. **Open a room.** Someone creates a room and shares the link. Everyone else types a name and joins. No accounts.
+2. **Read the job opening.** Each round, one player is the employer and turns over a job, like *Hostage Negotiator* or *Mall Santa*.
+3. **Build your résumé.** Every applicant gets four qualification cards and has a minute to swap them with the cards in the middle.
+4. **Pitch.** Applicants take turns revealing their cards one at a time and explaining why *Emotional Support Chicken* makes them perfect for the job. Every card has to be used.
+5. **Hire.** The employer picks the best pitch. The winner keeps the job card. Whoever holds the most jobs at the end is Employee of the Month.
+
+Play in the same room or over a video call: the site deals the cards, you do the talking.
+
+| Build your résumé | Pitch | Get hired |
+|---|---|---|
+| ![Swapping cards between the hand and the middle](docs/resume.png) | ![A card flipping over during a pitch](docs/pitch.png) | ![A red HIRED stamp over the winning résumé](docs/hired.png) |
+
+## Features
+
+- **Rooms with a 4-letter code.** Share `yoursite.com/ABCD` and friends land straight in the lobby.
+- **Three languages, per player.** Each person picks EN, TR or IT; the cards switch language on their screen only, so mixed groups can play together.
+- **Rules from the original game.** 10 open cards in the middle, everyone hires twice (once with 7+ players), and an optional final round where applicants compete for the employer's *real* job.
+- **"Running late" mode.** Applicants only see their cards while pitching.
+- **Pitch timer.** 45 to 120 seconds, or off.
+- **Drop-in, drop-out.** Refresh or lose Wi-Fi and you rejoin your seat. Late joiners get their turn as employer. If the host leaves, the next player takes over.
+- **Host tools.** Remove players in the lobby, skip a stuck round, or end the game.
+
+## Run it locally
+
+Requires Node.js 20 or newer.
 
 ```sh
+git clone https://github.com/armanalis/funemployed.git
+cd funemployed
 npm install
-npm start            # http://localhost:3000
+npm start
 ```
 
-- Test alone: create a room, then `npm run bots -- ROOMCODE 3` adds 3 bots that play automatically.
-- Same Wi-Fi: friends open `http://<your-computer-ip>:3000`.
-- Tests: `npm test`
+Open http://localhost:3000. Friends on the same Wi-Fi can join at `http://<your-computer-ip>:3000`.
 
-## Where things live
+**Testing alone?** Create a room, then fill it with bots that swap cards, pitch and hire on their own:
 
-| What | File |
+```sh
+npm run bots -- ABCD 3      # room code, number of bots
+```
+
+Run the tests with `npm test`.
+
+## Make it yours
+
+| To change | Edit |
 |---|---|
-| Buy Me a Coffee link | `public/js/config.js` |
-| Cards (EN/TR pairs, append only) | `public/shared/cards.js` |
-| UI text (EN/TR) | `public/js/i18n.js` |
-| Game rules | `server/game.js` |
-| Socket server | `server/index.js` |
+| Buy Me a Coffee link | [`public/js/config.js`](public/js/config.js) |
+| Job and qualification cards | [`public/shared/cards.json`](public/shared/cards.json) |
+| Interface text | [`public/js/i18n.js`](public/js/i18n.js) |
+| Game rules | [`server/game.js`](server/game.js) |
+
+### Adding cards
+
+Cards live in one JSON file with a text for every language:
+
+```json
+{ "id": 91, "tr": "Evcil Ejderha", "en": "Pet Dragon", "it": "Drago Domestico" }
+```
+
+Add new cards at the end of the list. A card's position is its id during a game, so reordering the list mid-game would mix up cards in open rooms. `npm test` fails if a card is missing a language.
+
+### Adding a language
+
+1. Add the language code to `LANGS` in `server/game.js` and `public/js/i18n.js`.
+2. Copy the `en` block in `i18n.js` and translate it.
+3. Add the new key to every card in `cards.json`.
+
+## How it works
+
+```
+server/index.js    Express serves the site; Socket.IO carries every game action
+server/game.js     The rules: one Room object per game, kept in memory
+public/            The browser app (Preact + htm, no build step)
+public/shared/     cards.json, read by both the server and the browser
+scripts/bots.js    Bot players for testing
+```
+
+The server is the only source of truth. Each player receives a view of the game with other players' hands hidden, so nobody can peek at cards through the browser's dev tools.
+
+There is no database. Cards ship with the code, and rooms live in server memory for 30 minutes after the last player leaves. A server restart ends open games.
 
 ## Deploying
 
-Rooms live in server memory and players connect over WebSockets, so it needs one long-running
-Node process (Render, Railway, Fly.io). Serverless hosting won't keep rooms alive.
+The game needs one long-running Node.js process, because rooms live in memory and players stay connected over WebSockets. Hosts like Render, Railway or Fly.io work as-is: set the start command to `npm start`; the server reads the `PORT` environment variable. Run a single instance, since rooms aren't shared between servers.
+
+## License
+
+Code released under the [MIT License](LICENSE).
+
+This is an unofficial fan project. It is not affiliated with or endorsed by the publishers of the Funemployed card game.

@@ -1,5 +1,13 @@
 import { randomBytes } from 'node:crypto';
-import { JOBS, QUALS, MY_JOB } from '../public/shared/cards.js';
+import { readFileSync } from 'node:fs';
+
+const deck = JSON.parse(readFileSync(new URL('../public/shared/cards.json', import.meta.url), 'utf8'));
+export const JOBS = deck.jobs;
+export const QUALS = deck.qualifications;
+export const LANGS = ['en', 'tr', 'it'];
+
+// Job id for the final "My Job" round, where applicants compete for the employer's real job.
+export const MY_JOB = -1;
 
 export const HAND_SIZE = 4;
 export const MIN_PLAYERS = 3;
@@ -128,7 +136,6 @@ export class Room {
     if (!player) return;
     player.sockets = Math.max(0, player.sockets - 1);
     this.lastActive = this.now();
-    if (player.sockets === 0 && this.phase === 'prep') this.maybeStartInterviews();
   }
 
   kick(byId, targetId) {

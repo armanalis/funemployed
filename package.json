@@ -2,7 +2,13 @@
   "name": "funemployed",
   "version": "0.1.0",
   "private": true,
-  "description": "Online party game: real jobs, ridiculous résumés. EN/TR.",
+  "description": "Free online party game: real jobs, ridiculous résumés. English, Turkish, Italian.",
+  "license": "MIT",
+  "author": "Ali Arman Dai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/armanalis/funemployed.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"

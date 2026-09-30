@@ -1,6 +1,6 @@
-import { JOBS, QUALS, MY_JOB } from '/shared/cards.js';
+import { JOBS, QUALS, MY_JOB } from './cards.js';
 
-export const LANGS = ['en', 'tr'];
+export const LANGS = ['en', 'tr', 'it'];
 
 const STRINGS = {
   en: {
@@ -235,6 +235,122 @@ const STRINGS = {
     err_timeout: 'Sunucu yanıt vermedi. Bağlantını kontrol edip tekrar dene.',
     err_generic: 'Olmadı. Tekrar dene.',
   },
+  it: {
+    tagline: 'Lavori veri. Curriculum assurdi.',
+    lede: 'Un party game da 3 a 12 amici. Uno di voi assume. Tutti gli altri devono conquistarsi il posto con quattro qualifiche assurde.',
+    createRoom: 'Crea una stanza',
+    roomCode: 'Codice stanza',
+    join: 'Entra',
+    noSignup: 'Gratis, senza registrazione. Condividi il link della stanza e gioca.',
+    dealAnother: 'Distribuisci ancora',
+    howTitle: 'Come si gioca',
+    how1: 'Un giocatore è il datore di lavoro e scopre un annuncio di lavoro.',
+    how2: 'Tutti gli altri ricevono quattro carte qualifica e possono scambiarle con quelle al centro.',
+    how3: 'A turno, i candidati sostengono il colloquio scoprendo le carte una alla volta.',
+    how4: 'Il datore di lavoro assume il candidato più convincente. Alla fine vince chi ha più lavori.',
+    howTip: 'Giocate nella stessa stanza o in videochiamata. Il sito distribuisce le carte, voi parlate.',
+    coffee: 'Offrimi un caffè',
+    fanProject: 'Un progetto non ufficiale di fan, ispirato al gioco di carte Funemployed.',
+    language: 'Lingua',
+
+    roomLabel: 'Stanza {code}',
+    copyLink: 'Copia link',
+    copied: 'Link copiato',
+    yourName: 'Il tuo nome',
+    joinRoom: 'Entra in partita',
+    connecting: 'Connessione…',
+    reconnecting: 'Connessione persa. Riconnessione in corso…',
+    backHome: 'Torna alla home',
+    leave: 'Esci',
+
+    lobbyTitle: "Sala d'attesa",
+    inviteHint: 'Manda questo link ai tuoi amici:',
+    players: 'Giocatori',
+    needMore: 'Servono almeno 3 giocatori. Ne mancano {n}.',
+    startGame: 'Inizia la partita',
+    waitingHost: '{name} avvierà la partita.',
+    settings: 'Impostazioni',
+    gameLength: 'Durata della partita',
+    lapsAuto: 'Standard (tutti assumono due volte, una sola con 7+ giocatori)',
+    lapsN: 'Ognuno è datore di lavoro {n}×',
+    pitchTimer: 'Tempo per il colloquio',
+    noTimer: 'Senza limite',
+    seconds: '{n} secondi',
+    blindMode: 'Modalità ritardo: i candidati vedono le carte solo durante il colloquio',
+    myJobMode: 'Ultimo turno: i candidati si contendono il vero lavoro del datore di lavoro',
+    remove: 'Rimuovi',
+    you: 'tu',
+    host: 'host',
+    employer: 'datore di lavoro',
+    offline: 'offline',
+    readyTag: 'pronto',
+
+    roundOf: 'Turno {n} di {total}',
+    jobOpening: 'Offerta di lavoro',
+    myJobTitle: 'Il vero lavoro di {name}',
+    myJobHint: 'Ultimo turno! {name}, racconta a tutti che lavoro fai davvero.',
+    spectating: 'Sei entrato a turno iniziato. Riceverai le carte al prossimo turno.',
+
+    prepTitle: 'Prepara il tuo curriculum',
+    prepHelp: 'Tocca una tua carta, poi una carta al centro, per scambiarle. Nel colloquio dovrai usare tutte le carte che hai in mano.',
+    prepEmployerTitle: 'I candidati si preparano',
+    prepEmployerHelp: 'Stanno scambiando carte per costruire il curriculum. Avvia i colloqui quando sono pronti.',
+    prepWaitTitle: 'I candidati si preparano',
+    pool: 'Carte al centro',
+    yourResume: 'Il tuo curriculum',
+    imReady: 'Sono pronto',
+    notReady: 'Aspetta, non ancora',
+    lockedHint: 'Il tuo curriculum è bloccato.',
+    readyCount: '{n} di {total} pronti',
+    startInterviews: 'Avvia i colloqui',
+    cardTaken: 'Qualcuno ha preso quella carta prima di te.',
+
+    interviewTitle: 'Colloqui',
+    nowPitching: 'Al colloquio: {name}',
+    yourTurnTitle: 'Tocca a te',
+    yourTurnHelp: 'Scopri le carte una alla volta e spiega perché sei perfetto per questo lavoro.',
+    employerAsk: 'Ascolta, fai domande scomode e passa al prossimo quando hai sentito abbastanza.',
+    finishPitch: 'Ho finito',
+    nextApplicant: 'Prossimo candidato',
+    upNext: 'I prossimi',
+    pitched: 'Hanno già parlato',
+    timeUp: 'Tempo scaduto',
+    tapToReveal: 'Tocca per scoprire',
+
+    decisionTitle: 'Chi ottiene il lavoro?',
+    decisionHelp: 'Confronta i curriculum e assumi un candidato.',
+    deciding: '{name} sta decidendo chi assumere.',
+    hire: 'Assumi',
+
+    stamp: 'Assunto',
+    gotTheJob: '{name} ha ottenuto il lavoro!',
+    nobodyHired: 'Nessuno ha ottenuto questo lavoro.',
+    nextRound: 'Prossimo turno',
+    seeResults: 'Vedi i risultati finali',
+    waitNext: '{name} avvierà il prossimo turno.',
+
+    overTitle: 'Impiegato del mese',
+    overTitleMany: 'Impiegati del mese',
+    jobs: '{n} lavori',
+    job: '1 lavoro',
+    noJobs: 'nessun lavoro',
+    playAgain: 'Gioca ancora',
+    waitAgain: '{name} può avviare una nuova partita.',
+
+    hostTools: "Strumenti dell'host",
+    skipRound: 'Salta questo turno',
+    endGame: 'Termina la partita',
+    confirmEnd: 'Sì, termina la partita',
+    cancel: 'Annulla',
+
+    err_room_not_found: 'Non esiste una stanza con il codice {code}. Controlla il codice o crea una nuova stanza.',
+    err_room_full: 'Questa stanza è piena (12 giocatori).',
+    err_name_required: 'Inserisci un nome per entrare.',
+    err_not_enough_players: 'Servono almeno 3 giocatori connessi.',
+    err_card_taken: 'Qualcuno ha preso quella carta prima di te.',
+    err_timeout: 'Il server non risponde. Controlla la connessione e riprova.',
+    err_generic: 'Qualcosa è andato storto. Riprova.',
+  },
 };
 
 export function t(lang, key, vars = {}) {
@@ -257,13 +373,13 @@ export function trGenitive(name) {
   return `${name}'${buffer}${harmony}n`;
 }
 
-const col = (lang) => (lang === 'tr' ? 1 : 0);
+const cardText = (card, lang) => card?.[lang] || card?.en || '';
 
-export const qualText = (lang, id) => QUALS[id]?.[col(lang)] ?? '';
+export const qualText = (lang, id) => cardText(QUALS[id], lang);
 
 export function jobText(lang, id, employerName = '') {
   if (id === MY_JOB) return t(lang, 'myJobTitle', { name: employerName, gen: trGenitive(employerName) });
-  return JOBS[id]?.[col(lang)] ?? '';
+  return cardText(JOBS[id], lang);
 }
 
 export function detectLang() {
@@ -271,5 +387,6 @@ export function detectLang() {
     const saved = localStorage.getItem('fe:lang');
     if (LANGS.includes(saved)) return saved;
   } catch {}
-  return navigator.language?.toLowerCase().startsWith('tr') ? 'tr' : 'en';
+  const browser = navigator.language?.slice(0, 2).toLowerCase();
+  return LANGS.includes(browser) ? browser : 'en';
 }

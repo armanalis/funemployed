@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Room, GameError, HAND_SIZE } from '../server/game.js';
-import { MY_JOB } from '../public/shared/cards.js';
+import { Room, GameError, HAND_SIZE, MY_JOB, JOBS, QUALS, LANGS } from '../server/game.js';
 
 function seeded(seed = 1) {
   return () => {
@@ -203,4 +202,16 @@ test('host can skip a stuck round; late joiners extend the game', () => {
   assert.equal(room.round.winnerId, null);
   room.nextRound(players[0].id);
   assert.equal(room.phase, 'prep');
+});
+
+test('every card has text in every language and a unique id', () => {
+  for (const [name, list] of [['jobs', JOBS], ['qualifications', QUALS]]) {
+    assert.ok(list.length > 0, `${name} is empty`);
+    assert.equal(new Set(list.map((c) => c.id)).size, list.length, `${name} has duplicate ids`);
+    for (const card of list) {
+      for (const lang of LANGS) {
+        assert.ok(typeof card[lang] === 'string' && card[lang].trim(), `${name} #${card.id} is missing "${lang}"`);
+      }
+    }
+  }
 });
