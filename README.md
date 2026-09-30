@@ -9,6 +9,8 @@ Everyone else talks their way into the job with four absurd qualifications.
 
 No sign-up · English · Türkçe · Italiano
 
+<a href="https://buymeacoffee.com/armanalis"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-armanalis-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+
 ![Home page: a job folder for "Kindergarten Teacher" with four qualification cards](docs/home.png)
 
 </div>
