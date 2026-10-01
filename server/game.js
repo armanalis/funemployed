@@ -8,16 +8,26 @@ export const LANGS = ['en', 'tr', 'it'];
 
 // Job id for the final "My Job" round, where applicants compete for the employer's real job.
 export const MY_JOB = -1;
+// Cards players write themselves get ids from here up, so they never collide with deck positions.
+export const CUSTOM_BASE = 100000;
 
 export const HAND_SIZE = 4;
+export const BONUS_CARDS = 2;
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 12;
-export const PREP_SECONDS = 60;
+// Voting needs at least three applicants, otherwise everyone just votes for the other one.
+export const MIN_VOTING_APPLICANTS = 3;
+export const CUSTOM_MAX_LENGTH = 50;
+export const CUSTOM_MAX_PER_KIND = 60;
+// "Time's up" stays on screen this long before the game moves on by itself.
+export const TIME_UP_GRACE_MS = 2000;
 const POOL_REFRESH_EVERY = 3;
 const NAME_MAX = 20;
 
+export const PREP_OPTIONS = [0, 30, 60, 90, 120];
 export const PITCH_OPTIONS = [0, 45, 60, 90, 120];
 export const LAP_OPTIONS = [0, 1, 2, 3];
+const FLAGS = ['blind', 'myJob', 'family', 'votes'];
 
 // Thrown for rule violations; the message is an error code the client translates.
 export class GameError extends Error {}
@@ -38,13 +48,15 @@ function shuffle(items, rng) {
 const range = (n) => Array.from({ length: n }, (_, i) => i);
 const newId = () => randomBytes(9).toString('base64url');
 
-export function cleanName(raw) {
+function cleanText(raw, max) {
   return String(raw ?? '')
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, NAME_MAX);
+    .slice(0, max);
 }
+
+export const cleanName = (raw) => cleanText(raw, NAME_MAX);
 
 export class Room {
   constructor(code, { rng = Math.random, now = Date.now } = {}) {
@@ -54,7 +66,17 @@ export class Room {
     this.players = [];
     this.ownerId = null;
     this.phase = 'lobby';
-    this.settings = { laps: 0, pitchSeconds: 60, blind: false, myJob: true };
+    this.settings = {
+      laps: 0,
+      prepSeconds: 60,
+      pitchSeconds: 60,
+      blind: false,
+      myJob: true,
+      family: false,
+      votes: true,
+    };
+    this.custom = { jobs: [], quals: [] };
+    this.nextCustomId = CUSTOM_BASE;
     this.round = null;
     this.roundNumber = 0;
     this.totalRounds = 0;
@@ -109,6 +131,7 @@ export class Room {
           name: this.uniqueName(name),
           sockets: 0,
           jobs: [],
+          stars: 0,
           hand: [],
           ready: false,
         };
@@ -153,24 +176,56 @@ export class Room {
     this.requireHost(byId);
     if (this.phase !== 'lobby' && this.phase !== 'over') fail('wrong_phase');
     const next = { ...this.settings };
-    if ('laps' in patch) {
-      if (!LAP_OPTIONS.includes(patch.laps)) fail('bad_setting');
-      next.laps = patch.laps;
-    }
-    if ('pitchSeconds' in patch) {
-      if (!PITCH_OPTIONS.includes(patch.pitchSeconds)) fail('bad_setting');
-      next.pitchSeconds = patch.pitchSeconds;
-    }
-    for (const key of ['blind', 'myJob']) {
-      if (key in patch) {
-        if (typeof patch[key] !== 'boolean') fail('bad_setting');
-        next[key] = patch[key];
-      }
-    }
+    const pick = (key, options) => {
+      if (!(key in patch)) return;
+      if (!options.includes(patch[key])) fail('bad_setting');
+      next[key] = patch[key];
+    };
+    pick('laps', LAP_OPTIONS);
+    pick('prepSeconds', PREP_OPTIONS);
+    pick('pitchSeconds', PITCH_OPTIONS);
+    for (const key of FLAGS) pick(key, [true, false]);
     this.settings = next;
   }
 
+  // ---------- cards players write themselves ----------
+
+  addCustomCard(byId, kind, rawText) {
+    if (this.phase !== 'lobby') fail('wrong_phase');
+    const author = this.getPlayer(byId);
+    if (!author) fail('not_allowed');
+    const list = this.customList(kind);
+    const text = cleanText(rawText, CUSTOM_MAX_LENGTH + 1);
+    if (!text) fail('card_empty');
+    if (text.length > CUSTOM_MAX_LENGTH) fail('card_too_long');
+    if (list.length >= CUSTOM_MAX_PER_KIND) fail('custom_limit');
+    const key = text.toLocaleLowerCase('tr');
+    if (list.some((c) => c.text.toLocaleLowerCase('tr') === key)) fail('card_exists');
+    list.push({ id: this.nextCustomId++, text, by: author.name, byId: author.id });
+  }
+
+  removeCustomCard(byId, kind, cardId) {
+    if (this.phase !== 'lobby') fail('wrong_phase');
+    const list = this.customList(kind);
+    const card = list.find((c) => c.id === cardId);
+    if (!card) fail('bad_card');
+    if (byId !== card.byId && byId !== this.hostId()) fail('not_allowed');
+    list.splice(list.indexOf(card), 1);
+  }
+
+  customList(kind) {
+    if (kind === 'job') return this.custom.jobs;
+    if (kind === 'qual') return this.custom.quals;
+    return fail('bad_card');
+  }
+
   // ---------- decks ----------
+
+  // Card ids in play for this game: the built-in deck (minus 18+ cards in family mode) plus custom cards.
+  deckIds(cards, custom) {
+    const keep = range(cards.length).filter((i) => !(this.settings.family && cards[i].adult));
+    return [...keep, ...custom.map((c) => c.id)];
+  }
 
   drawQual() {
     if (this.qualDeck.length === 0) {
@@ -182,7 +237,7 @@ export class Room {
   }
 
   drawJob() {
-    if (this.jobDeck.length === 0) this.jobDeck = shuffle(range(JOBS.length), this.rng);
+    if (this.jobDeck.length === 0) this.jobDeck = shuffle(this.jobIds, this.rng);
     return this.jobDeck.pop();
   }
 
@@ -195,13 +250,16 @@ export class Room {
     this.players = this.connectedPlayers();
     for (const p of this.players) {
       p.jobs = [];
+      p.stars = 0;
       p.hand = [];
       p.ready = false;
     }
-    this.qualDeck = shuffle(range(QUALS.length), this.rng);
+    this.jobIds = this.deckIds(JOBS, this.custom.jobs);
+    this.qualDeck = shuffle(this.deckIds(QUALS, this.custom.quals), this.rng);
     this.qualDiscard = [];
-    this.jobDeck = shuffle(range(JOBS.length), this.rng);
+    this.jobDeck = shuffle(this.jobIds, this.rng);
     this.pool = [];
+    this.round = null;
     this.roundNumber = 0;
     this.totalRounds = this.laps() * this.players.length;
     this.employerIdx = Math.floor(this.rng() * this.players.length) - 1;
@@ -226,6 +284,7 @@ export class Room {
       p.hand = [];
       p.ready = false;
     }
+    for (const cards of Object.values(this.round?.bonus ?? {})) this.qualDiscard.push(...cards);
 
     if (this.roundNumber % POOL_REFRESH_EVERY === 0) {
       this.qualDiscard.push(...this.pool);
@@ -247,6 +306,12 @@ export class Room {
       prepStartedAt: this.now(),
       turnStartedAt: null,
       winnerId: null,
+      skipped: false,
+      closed: false,
+      votes: {},
+      finalists: [],
+      bonus: {},
+      bonusPick: {},
     };
     this.phase = 'prep';
     // "Running late" variant: nobody sees their cards before pitching, so there's nothing to prepare.
@@ -272,10 +337,6 @@ export class Room {
   setReady(playerId, ready) {
     if (this.phase !== 'prep') fail('wrong_phase');
     this.requireApplicant(playerId).ready = Boolean(ready);
-    this.maybeStartInterviews();
-  }
-
-  maybeStartInterviews() {
     const waiting = this.round.applicants
       .map((id) => this.getPlayer(id))
       .filter((p) => p.sockets > 0 && !p.ready);
@@ -328,6 +389,32 @@ export class Room {
     this.advanceApplicant();
   }
 
+  // ---------- timers ----------
+
+  // When the current phase moves on by itself, or null if it waits for the players.
+  deadline() {
+    const r = this.round;
+    const { prepSeconds, pitchSeconds } = this.settings;
+    if (this.phase === 'prep' && prepSeconds) return r.prepStartedAt + prepSeconds * 1000 + TIME_UP_GRACE_MS;
+    if (this.phase === 'interview' && pitchSeconds) return r.turnStartedAt + pitchSeconds * 1000 + TIME_UP_GRACE_MS;
+    return null;
+  }
+
+  // Applies a deadline that has passed. Returns whether anything changed.
+  tick() {
+    const due = this.deadline();
+    if (due === null || this.now() < due) return false;
+    if (this.phase === 'prep') {
+      this.beginInterviews();
+    } else {
+      this.round.revealed[this.currentApplicantId()].fill(true);
+      this.advanceApplicant();
+    }
+    return true;
+  }
+
+  // ---------- tiebreaker ----------
+
   // The employer decides; if they dropped out, the host decides for them.
   requireDecider(byId) {
     const employerId = this.round.employerId;
@@ -335,26 +422,100 @@ export class Room {
     if (byId !== allowed) fail('employer_only');
   }
 
-  hire(byId, applicantId) {
+  // Official rule: when the employer can't choose, each finalist gets two more cards
+  // and uses one of them for a final argument.
+  startTiebreak(byId, finalistIds) {
     if (this.phase !== 'decision') fail('wrong_phase');
     this.requireDecider(byId);
-    if (!this.round.applicants.includes(applicantId)) fail('not_applicant');
-    const employer = this.getPlayer(this.round.employerId);
-    this.getPlayer(applicantId).jobs.push({ job: this.round.job, employer: employer.name });
-    this.round.winnerId = applicantId;
+    const r = this.round;
+    const ids = [...new Set(Array.isArray(finalistIds) ? finalistIds : [])];
+    const valid = ids.every((id) => r.applicants.includes(id) && this.isConnected(id));
+    if (ids.length < 2 || !valid) fail('need_finalists');
+    // Keep the pitching order.
+    r.finalists = r.applicants.filter((id) => ids.includes(id));
+    for (const id of r.finalists) {
+      r.bonus[id] = range(BONUS_CARDS).map(() => this.drawQual());
+      r.bonusPick[id] = null;
+    }
+    this.phase = 'tiebreak';
+  }
+
+  pickBonus(playerId, idx) {
+    if (this.phase !== 'tiebreak') fail('wrong_phase');
+    const r = this.round;
+    if (!r.finalists.includes(playerId)) fail('not_finalist');
+    if (r.bonusPick[playerId] !== null) fail('already_picked');
+    if (!Number.isInteger(idx) || idx < 0 || idx >= BONUS_CARDS) fail('bad_card');
+    r.bonusPick[playerId] = idx;
+  }
+
+  hire(byId, applicantId) {
+    if (this.phase !== 'decision' && this.phase !== 'tiebreak') fail('wrong_phase');
+    this.requireDecider(byId);
+    const r = this.round;
+    if (!r.applicants.includes(applicantId)) fail('not_applicant');
+    if (this.phase === 'tiebreak' && !r.finalists.includes(applicantId)) fail('not_finalist');
+    const employer = this.getPlayer(r.employerId);
+    this.getPlayer(applicantId).jobs.push({ job: r.job, employer: employer.name });
+    r.winnerId = applicantId;
     this.phase = 'result';
   }
 
+  // ---------- audience vote ----------
+
+  votingOn() {
+    const r = this.round;
+    return Boolean(this.settings.votes && r && !r.skipped && r.applicants.length >= MIN_VOTING_APPLICANTS);
+  }
+
+  // Everyone except the employer picks the funniest pitch; the fan favorite earns a star.
+  vote(playerId, targetId) {
+    if (!this.votingOn()) fail('voting_off');
+    if (!['decision', 'tiebreak', 'result'].includes(this.phase)) fail('wrong_phase');
+    const r = this.round;
+    if (!this.getPlayer(playerId) || playerId === r.employerId) fail('not_allowed');
+    if (targetId === playerId) fail('no_self_vote');
+    if (!r.applicants.includes(targetId)) fail('not_applicant');
+    r.votes[playerId] = targetId;
+  }
+
+  voteCounts() {
+    const counts = {};
+    for (const target of Object.values(this.round.votes)) counts[target] = (counts[target] ?? 0) + 1;
+    return counts;
+  }
+
+  // The applicant with the most votes, or null when nobody voted or it's a tie.
+  fanFavoriteId() {
+    const ranked = Object.entries(this.voteCounts()).sort((a, b) => b[1] - a[1]);
+    if (ranked.length === 0 || ranked[1]?.[1] === ranked[0][1]) return null;
+    return ranked[0][0];
+  }
+
+  // Hands out the fan favorite's star once the round is over.
+  closeRound() {
+    const r = this.round;
+    if (!r || r.closed) return;
+    r.closed = true;
+    if (this.phase !== 'result' || !this.votingOn()) return;
+    const favorite = this.getPlayer(this.fanFavoriteId());
+    if (favorite) favorite.stars += 1;
+  }
+
+  // ---------- ending rounds and games ----------
+
   skipRound(byId) {
     this.requireHost(byId);
-    if (!['prep', 'interview', 'decision'].includes(this.phase)) fail('wrong_phase');
+    if (!['prep', 'interview', 'decision', 'tiebreak'].includes(this.phase)) fail('wrong_phase');
     this.round.winnerId = null;
+    this.round.skipped = true;
     this.phase = 'result';
   }
 
   nextRound(byId) {
     if (this.phase !== 'result') fail('wrong_phase');
     if (byId !== this.round.employerId && byId !== this.hostId()) fail('not_allowed');
+    this.closeRound();
     if (this.roundNumber >= this.totalRounds) {
       this.phase = 'over';
       return;
@@ -365,6 +526,7 @@ export class Room {
   endGame(byId) {
     this.requireHost(byId);
     if (!this.inGame()) fail('wrong_phase');
+    this.closeRound();
     this.phase = 'over';
   }
 
@@ -375,6 +537,7 @@ export class Room {
     this.round = null;
     for (const p of this.players) {
       p.jobs = [];
+      p.stars = 0;
       p.hand = [];
       p.ready = false;
     }
@@ -396,6 +559,13 @@ export class Room {
       if (me && r.applicants.includes(me.id)) {
         hand = this.settings.blind ? resumes[me.id] : me.hand;
       }
+      // A finalist sees both extra cards; everyone sees the one each finalist picked.
+      const bonusPicks = Object.fromEntries(
+        r.finalists.map((id) => [id, r.bonusPick[id] === null ? null : r.bonus[id][r.bonusPick[id]]]),
+      );
+      const voting = this.votingOn();
+      // Vote counts stay hidden until the employer has decided, so they can't sway the hire.
+      const showVotes = voting && this.phase === 'result';
       round = {
         employerId: r.employerId,
         job: r.job,
@@ -404,9 +574,19 @@ export class Room {
         prepStartedAt: r.prepStartedAt,
         turnStartedAt: r.turnStartedAt,
         winnerId: r.winnerId,
+        skipped: r.skipped,
         pool: this.phase === 'prep' ? this.pool : [],
         resumes,
         hand,
+        finalists: r.finalists,
+        bonusHand: r.bonus[playerId] ?? [],
+        bonusPicks,
+        voting,
+        myVote: r.votes[playerId] ?? null,
+        votesCast: Object.keys(r.votes).length,
+        voters: this.players.filter((p) => p.sockets > 0 && p.id !== r.employerId).length,
+        voteCounts: showVotes ? this.voteCounts() : {},
+        fanFavoriteId: showVotes ? this.fanFavoriteId() : null,
       };
     }
     return {
@@ -415,7 +595,10 @@ export class Room {
       hostId: this.hostId(),
       phase: this.phase,
       settings: this.settings,
-      prepSeconds: PREP_SECONDS,
+      custom: {
+        jobs: this.custom.jobs.map(({ id, text, by, byId }) => ({ id, text, by, byId })),
+        quals: this.custom.quals.map(({ id, text, by, byId }) => ({ id, text, by, byId })),
+      },
       roundNumber: this.roundNumber,
       totalRounds: this.totalRounds,
       serverNow: this.now(),
@@ -425,6 +608,7 @@ export class Room {
         connected: p.sockets > 0,
         ready: p.ready,
         jobs: p.jobs,
+        stars: p.stars,
       })),
       round,
     };

@@ -1,8 +1,8 @@
-import { JOBS, QUALS, MY_JOB } from './cards.js';
+import { JOBS, QUALS, MY_JOB, customText } from './cards.js';
 
 export const LANGS = ['en', 'tr', 'it'];
 
-const STRINGS = {
+export const STRINGS = {
   en: {
     tagline: 'Real jobs. Ridiculous résumés.',
     lede: 'A party game for 3 to 12 friends. One of you is hiring. Everyone else talks their way into the job with four absurd qualifications.',
@@ -111,6 +111,57 @@ const STRINGS = {
     confirmEnd: 'Yes, end the game',
     cancel: 'Cancel',
 
+    prepTimer: 'Résumé building time',
+    timerNote: 'When time runs out, the game moves on by itself.',
+    familyMode: 'Family mode: leave out the {n} cards marked 18+',
+    votesMode: 'Audience vote: players pick a fan favorite each round, who earns a star (4+ players)',
+
+    customTitle: 'Your own cards',
+    customHelp: 'Add inside jokes. They go into the deck for this room only and show up in every language as written.',
+    customKind: 'Card type',
+    customJob: 'Job',
+    customQual: 'Qualification',
+    customPlaceholder: 'Card text',
+    customJobExample: 'e.g. Professional nap tester',
+    customQualExample: "e.g. Still owes Mert 50 lira",
+    addCard: 'Add card',
+    customCount: '{jobs} jobs, {quals} qualifications added',
+    byName: 'by {name}',
+    removeCard: 'Remove "{text}"',
+
+    vote: 'Vote',
+    voted: 'Your vote',
+    voteHelp: 'Vote for the funniest pitch.',
+    votesCast: '{n} of {total} players voted.',
+    voteStillOpen: 'Voting stays open until the next round starts.',
+    fanFavorite: 'Fan favorite: {name} gets a star',
+    fanFavoriteTag: 'fan favorite',
+    voteTie: 'Tied vote: nobody gets the star yet.',
+    votesNone: 'Nobody has voted yet.',
+
+    finalist: 'Finalist',
+    tiebreakOffer: "Can't decide? Mark 2 or more finalists for a tiebreaker.",
+    tiebreakOfferTwo: "Can't decide? Start a tiebreaker.",
+    tiebreakStart: 'Start tiebreaker ({n})',
+    tiebreakTitle: 'Tiebreaker',
+    tiebreakHelpFinalist: 'You got 2 extra cards. Pick one and use it for one final argument.',
+    tiebreakHelpEmployer: 'Each finalist picks one extra card for a final argument. Hire whoever wins you over.',
+    tiebreakHelpOthers: 'Each finalist picks one extra card for a final argument.',
+    tiebreakWaiting: 'Still picking: {names}',
+    bonusTag: 'final card',
+    pickThis: 'Use this card',
+
+    star: '1 star',
+    stars: '{n} stars',
+    jobsAndStars: '{jobs} + {stars}',
+    scoringNote: 'Score: 1 point per job, 1 point per fan favorite star.',
+
+    err_card_empty: 'Write something on the card first.',
+    err_card_too_long: 'Cards can be up to 50 characters.',
+    err_custom_limit: 'This room has reached 60 cards of that type.',
+    err_card_exists: 'That card is already in the room.',
+    err_need_finalists: 'Pick at least 2 finalists who are still connected.',
+    err_no_self_vote: "You can't vote for yourself.",
     err_room_not_found: 'There is no room with the code {code}. Check the code or create a new room.',
     err_room_full: 'This room is full (12 players).',
     err_name_required: 'Enter a name to join.',
@@ -227,6 +278,57 @@ const STRINGS = {
     confirmEnd: 'Evet, oyunu bitir',
     cancel: 'Vazgeç',
 
+    prepTimer: 'Özgeçmiş hazırlama süresi',
+    timerNote: 'Süre dolunca oyun kendiliğinden devam eder.',
+    familyMode: 'Aile modu: +18 işaretli {n} kartı çıkar',
+    votesMode: 'Seyirci oyu: her tur oyuncular favorilerini seçer, favori bir yıldız kazanır (4+ oyuncu)',
+
+    customTitle: 'Kendi kartlarınız',
+    customHelp: 'Aranızdaki esprileri ekleyin. Sadece bu odanın destesine girer ve her dilde yazdığınız gibi görünür.',
+    customKind: 'Kart türü',
+    customJob: 'İş',
+    customQual: 'Nitelik',
+    customPlaceholder: 'Kart metni',
+    customJobExample: 'ör. Profesyonel şekerleme test uzmanı',
+    customQualExample: "ör. Mert'e hâlâ 50 lira borcu var",
+    addCard: 'Kartı ekle',
+    customCount: '{jobs} iş, {quals} nitelik eklendi',
+    byName: 'ekleyen: {name}',
+    removeCard: '"{text}" kartını çıkar',
+
+    vote: 'Oy ver',
+    voted: 'Oy verdin',
+    voteHelp: 'En komik konuşmaya oy ver.',
+    votesCast: '{n}/{total} oyuncu oy verdi.',
+    voteStillOpen: 'Oylama sonraki tur başlayana kadar açık.',
+    fanFavorite: 'Seyircinin favorisi: {name} bir yıldız kazanıyor',
+    fanFavoriteTag: 'favori',
+    voteTie: 'Oylar eşit: şimdilik kimse yıldız almıyor.',
+    votesNone: 'Henüz kimse oy vermedi.',
+
+    finalist: 'Finalist',
+    tiebreakOffer: 'Karar veremedin mi? Eşitlik bozma turu için en az 2 finalist işaretle.',
+    tiebreakOfferTwo: 'Karar veremedin mi? Eşitlik bozma turunu başlat.',
+    tiebreakStart: 'Eşitlik bozmayı başlat ({n})',
+    tiebreakTitle: 'Eşitlik bozma turu',
+    tiebreakHelpFinalist: '2 ek kart aldın. Birini seç ve son bir argüman için kullan.',
+    tiebreakHelpEmployer: 'Her finalist son argümanı için bir ek kart seçiyor. Seni ikna edeni işe al.',
+    tiebreakHelpOthers: 'Her finalist son argümanı için bir ek kart seçiyor.',
+    tiebreakWaiting: 'Hâlâ seçiyor: {names}',
+    bonusTag: 'son kart',
+    pickThis: 'Bu kartı kullan',
+
+    star: '1 yıldız',
+    stars: '{n} yıldız',
+    jobsAndStars: '{jobs} + {stars}',
+    scoringNote: 'Puan: her iş 1 puan, her favori yıldızı 1 puan.',
+
+    err_card_empty: 'Önce karta bir şey yaz.',
+    err_card_too_long: 'Kartlar en fazla 50 karakter olabilir.',
+    err_custom_limit: 'Bu odada o türden 60 kart sınırına ulaşıldı.',
+    err_card_exists: 'Bu kart odada zaten var.',
+    err_need_finalists: 'Hâlâ bağlı olan en az 2 finalist seç.',
+    err_no_self_vote: 'Kendine oy veremezsin.',
     err_room_not_found: '{code} kodlu bir oda yok. Kodu kontrol et ya da yeni bir oda kur.',
     err_room_full: 'Bu oda dolu (12 oyuncu).',
     err_name_required: 'Katılmak için bir ad yaz.',
@@ -343,6 +445,57 @@ const STRINGS = {
     confirmEnd: 'Sì, termina la partita',
     cancel: 'Annulla',
 
+    prepTimer: 'Tempo per il curriculum',
+    timerNote: 'Allo scadere del tempo il gioco va avanti da solo.',
+    familyMode: 'Modalità famiglia: escludi le {n} carte segnate 18+',
+    votesMode: 'Voto del pubblico: a ogni turno i giocatori scelgono un preferito, che guadagna una stella (4+ giocatori)',
+
+    customTitle: 'Le vostre carte',
+    customHelp: 'Aggiungete le vostre battute interne. Entrano nel mazzo solo per questa stanza e appaiono così come le scrivete in ogni lingua.',
+    customKind: 'Tipo di carta',
+    customJob: 'Lavoro',
+    customQual: 'Qualifica',
+    customPlaceholder: 'Testo della carta',
+    customJobExample: 'es. Collaudatore professionista di pisolini',
+    customQualExample: 'es. Deve ancora 50 euro a Marco',
+    addCard: 'Aggiungi carta',
+    customCount: '{jobs} lavori e {quals} qualifiche aggiunti',
+    byName: 'di {name}',
+    removeCard: 'Rimuovi «{text}»',
+
+    vote: 'Vota',
+    voted: 'Il tuo voto',
+    voteHelp: 'Vota il colloquio più divertente.',
+    votesCast: '{n} giocatori su {total} hanno votato.',
+    voteStillOpen: 'Si può votare fino all’inizio del prossimo turno.',
+    fanFavorite: 'Preferito del pubblico: {name} guadagna una stella',
+    fanFavoriteTag: 'preferito',
+    voteTie: 'Pareggio: per ora nessuno prende la stella.',
+    votesNone: 'Nessuno ha ancora votato.',
+
+    finalist: 'Finalista',
+    tiebreakOffer: 'Non sai decidere? Segna almeno 2 finalisti per lo spareggio.',
+    tiebreakOfferTwo: 'Non sai decidere? Avvia lo spareggio.',
+    tiebreakStart: 'Avvia lo spareggio ({n})',
+    tiebreakTitle: 'Spareggio',
+    tiebreakHelpFinalist: 'Hai ricevuto 2 carte extra. Scegline una e usala per un ultimo argomento.',
+    tiebreakHelpEmployer: 'Ogni finalista sceglie una carta extra per l’ultimo argomento. Assumi chi ti convince.',
+    tiebreakHelpOthers: 'Ogni finalista sceglie una carta extra per l’ultimo argomento.',
+    tiebreakWaiting: 'Stanno ancora scegliendo: {names}',
+    bonusTag: 'ultima carta',
+    pickThis: 'Usa questa carta',
+
+    star: '1 stella',
+    stars: '{n} stelle',
+    jobsAndStars: '{jobs} + {stars}',
+    scoringNote: 'Punteggio: 1 punto per lavoro, 1 punto per ogni stella da preferito.',
+
+    err_card_empty: 'Scrivi prima qualcosa sulla carta.',
+    err_card_too_long: 'Le carte possono avere al massimo 50 caratteri.',
+    err_custom_limit: 'Questa stanza ha raggiunto 60 carte di quel tipo.',
+    err_card_exists: 'Questa carta è già nella stanza.',
+    err_need_finalists: 'Scegli almeno 2 finalisti ancora connessi.',
+    err_no_self_vote: 'Non puoi votare per te stesso.',
     err_room_not_found: 'Non esiste una stanza con il codice {code}. Controlla il codice o crea una nuova stanza.',
     err_room_full: 'Questa stanza è piena (12 giocatori).',
     err_name_required: 'Inserisci un nome per entrare.',
@@ -375,11 +528,11 @@ export function trGenitive(name) {
 
 const cardText = (card, lang) => card?.[lang] || card?.en || '';
 
-export const qualText = (lang, id) => cardText(QUALS[id], lang);
+export const qualText = (lang, id) => customText(id) ?? cardText(QUALS[id], lang);
 
 export function jobText(lang, id, employerName = '') {
   if (id === MY_JOB) return t(lang, 'myJobTitle', { name: employerName, gen: trGenitive(employerName) });
-  return cardText(JOBS[id], lang);
+  return customText(id) ?? cardText(JOBS[id], lang);
 }
 
 export function detectLang() {

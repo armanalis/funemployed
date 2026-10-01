@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Room, GameError, HAND_SIZE, MY_JOB, JOBS, QUALS, LANGS } from '../server/game.js';
+import {
+  Room,
+  GameError,
+  HAND_SIZE,
+  BONUS_CARDS,
+  MY_JOB,
+  JOBS,
+  QUALS,
+  LANGS,
+  CUSTOM_BASE,
+  CUSTOM_MAX_PER_KIND,
+  TIME_UP_GRACE_MS,
+} from '../server/game.js';
 
 function seeded(seed = 1) {
   return () => {
@@ -214,4 +226,202 @@ test('every card has text in every language and a unique id', () => {
       }
     }
   }
+});
+
+// ---------- added features ----------
+
+function inPlay(room) {
+  const r = room.round;
+  return [
+    ...room.qualDeck,
+    ...room.qualDiscard,
+    ...room.pool,
+    ...room.players.flatMap((p) => p.hand),
+    ...Object.values(r?.bonus ?? {}).flat(),
+  ];
+}
+
+function toDecision(room) {
+  for (const id of room.round.applicants) room.setReady(id, true);
+  for (const id of [...room.round.applicants]) room.finishPitch(id);
+  assert.equal(room.phase, 'decision');
+}
+
+test('family mode leaves 18+ cards out of both decks', () => {
+  const { room, players } = setup();
+  room.updateSettings(players[0].id, { family: true });
+  room.startGame(players[0].id);
+  const adultQuals = QUALS.flatMap((c, i) => (c.adult ? [i] : []));
+  const adultJobs = JOBS.flatMap((c, i) => (c.adult ? [i] : []));
+  assert.ok(adultQuals.length > 0 && adultJobs.length > 0);
+  const quals = new Set(inPlay(room));
+  assert.equal(quals.size, QUALS.length - adultQuals.length);
+  for (const id of adultQuals) assert.ok(!quals.has(id));
+  for (const id of adultJobs) assert.ok(!room.jobIds.includes(id));
+});
+
+test('custom cards: anyone adds in the lobby, author or host removes, they join the deck', () => {
+  const { room, players } = setup();
+  const [host, ece, mert] = players;
+  room.addCustomCard(ece.id, 'qual', '  Knows   the  bus schedule ');
+  room.addCustomCard(mert.id, 'job', 'Professional napper');
+  const [card] = room.custom.quals;
+  assert.equal(card.text, 'Knows the bus schedule');
+  assert.ok(card.id >= CUSTOM_BASE);
+  assert.throws(() => room.addCustomCard(ece.id, 'qual', 'knows the BUS schedule'), /card_exists/);
+  assert.throws(() => room.addCustomCard(ece.id, 'qual', '   '), /card_empty/);
+  assert.throws(() => room.addCustomCard(ece.id, 'qual', 'x'.repeat(51)), /card_too_long/);
+  assert.throws(() => room.addCustomCard(ece.id, 'weapon', 'Sword'), /bad_card/);
+  assert.throws(() => room.removeCustomCard(mert.id, 'qual', card.id), /not_allowed/);
+  room.addCustomCard(ece.id, 'qual', 'Owns a llama farm');
+  room.removeCustomCard(host.id, 'qual', room.custom.quals[1].id);
+  assert.equal(room.custom.quals.length, 1);
+  assert.equal(room.view(mert.id).custom.quals[0].by, 'Ece');
+
+  room.updateSettings(host.id, { family: true });
+  room.startGame(host.id);
+  assert.ok(inPlay(room).includes(card.id), 'custom cards are dealt even in family mode');
+  assert.ok(room.jobIds.includes(room.custom.jobs[0].id));
+  assert.throws(() => room.addCustomCard(ece.id, 'qual', 'Too late'), /wrong_phase/);
+});
+
+test('custom card limit per kind', () => {
+  const { room, players } = setup();
+  for (let i = 0; i < CUSTOM_MAX_PER_KIND; i++) room.addCustomCard(players[0].id, 'job', `Job ${i}`);
+  assert.throws(() => room.addCustomCard(players[0].id, 'job', 'One more'), /custom_limit/);
+  room.addCustomCard(players[0].id, 'qual', 'Qualifications have their own limit');
+});
+
+test('timers: résumé building and pitches end on their own', () => {
+  const { room, players, tick } = setup(['A', 'B', 'C', 'D']);
+  room.updateSettings(players[0].id, { prepSeconds: 30, pitchSeconds: 45 });
+  room.startGame(players[0].id);
+  assert.equal(room.deadline(), room.round.prepStartedAt + 30_000 + TIME_UP_GRACE_MS);
+  tick(30_000);
+  assert.equal(room.tick(), false, 'the "time\'s up" grace period comes first');
+  tick(TIME_UP_GRACE_MS);
+  assert.equal(room.tick(), true);
+  assert.equal(room.phase, 'interview');
+
+  const first = room.currentApplicantId();
+  tick(45_000 + TIME_UP_GRACE_MS);
+  room.tick();
+  assert.deepEqual(room.round.revealed[first], [true, true, true, true], 'all cards shown when time runs out');
+  assert.notEqual(room.currentApplicantId(), first);
+});
+
+test('timers set to "no timer" wait for the players', () => {
+  const { room, players, tick } = setup();
+  assert.throws(() => room.updateSettings(players[0].id, { prepSeconds: 7 }), /bad_setting/);
+  room.updateSettings(players[0].id, { prepSeconds: 0, pitchSeconds: 0 });
+  room.startGame(players[0].id);
+  assert.equal(room.deadline(), null);
+  tick(10 * 60_000);
+  assert.equal(room.tick(), false);
+  assert.equal(room.phase, 'prep');
+});
+
+test('audience vote: hidden until the hire, star to the clear favorite', () => {
+  const { room, players } = setup(['A', 'B', 'C', 'D']);
+  room.startGame(players[0].id);
+  const r = room.round;
+  const [x, y, z] = r.applicants;
+  toDecision(room);
+  assert.ok(room.view(x).round.voting);
+  assert.throws(() => room.vote(r.employerId, x), /not_allowed/);
+  assert.throws(() => room.vote(x, x), /no_self_vote/);
+  room.vote(x, y);
+  room.vote(z, x);
+  room.vote(z, y); // changing your mind is fine
+  assert.deepEqual(room.view(x).round.voteCounts, {}, 'no counts before the hire');
+  assert.equal(room.view(x).round.votesCast, 2);
+  assert.equal(room.view(x).round.myVote, y);
+
+  room.hire(r.employerId, x);
+  assert.deepEqual(room.view(x).round.voteCounts, { [y]: 2 });
+  assert.equal(room.view(x).round.fanFavoriteId, y);
+  room.nextRound(r.employerId);
+  assert.equal(room.getPlayer(y).stars, 1);
+  assert.equal(room.getPlayer(x).stars, 0);
+});
+
+test('audience vote: ties give no star; off with 2 applicants or when disabled', () => {
+  const { room, players } = setup(['A', 'B', 'C', 'D']);
+  room.startGame(players[0].id);
+  const r = room.round;
+  const [x, y, z] = r.applicants;
+  toDecision(room);
+  room.vote(x, y);
+  room.vote(y, x);
+  room.hire(r.employerId, z);
+  assert.equal(room.fanFavoriteId(), null);
+  room.nextRound(r.employerId);
+  assert.ok(room.players.every((p) => p.stars === 0));
+
+  const small = setup(['A', 'B', 'C']);
+  small.room.startGame(small.players[0].id);
+  assert.equal(small.room.votingOn(), false);
+
+  const off = setup(['A', 'B', 'C', 'D']);
+  off.room.updateSettings(off.players[0].id, { votes: false });
+  off.room.startGame(off.players[0].id);
+  toDecision(off.room);
+  assert.throws(() => off.room.vote(off.room.round.applicants[0], off.room.round.applicants[1]), /voting_off/);
+});
+
+test('a skipped round awards no star', () => {
+  const { room, players } = setup(['A', 'B', 'C', 'D']);
+  room.startGame(players[0].id);
+  const [x, y] = room.round.applicants;
+  toDecision(room);
+  room.vote(x, y);
+  room.skipRound(players[0].id);
+  assert.throws(() => room.vote(y, x), /voting_off/);
+  room.nextRound(players[0].id);
+  assert.ok(room.players.every((p) => p.stars === 0));
+});
+
+test('tiebreaker: finalists get 2 private cards, pick one, employer hires a finalist', () => {
+  const { room, players } = setup(['A', 'B', 'C', 'D']);
+  room.startGame(players[0].id);
+  const r = room.round;
+  const [x, y, z] = r.applicants;
+  toDecision(room);
+  assert.throws(() => room.startTiebreak(x, [x, y]), /employer_only/);
+  assert.throws(() => room.startTiebreak(r.employerId, [x]), /need_finalists/);
+  assert.throws(() => room.startTiebreak(r.employerId, [x, r.employerId]), /need_finalists/);
+  room.startTiebreak(r.employerId, [y, x, x]);
+  assert.equal(room.phase, 'tiebreak');
+  assert.deepEqual(r.finalists, [x, y], 'finalists keep pitching order');
+
+  assert.equal(room.view(x).round.bonusHand.length, BONUS_CARDS);
+  assert.deepEqual(room.view(z).round.bonusHand, [], 'others cannot see the extra cards');
+  assert.deepEqual(room.view(z).round.bonusPicks, { [x]: null, [y]: null });
+  assert.throws(() => room.pickBonus(z, 0), /not_finalist/);
+  room.pickBonus(x, 1);
+  assert.throws(() => room.pickBonus(x, 0), /already_picked/);
+  assert.equal(room.view(z).round.bonusPicks[x], r.bonus[x][1]);
+
+  room.vote(z, x); // voting stays open during the tiebreaker
+  assert.throws(() => room.hire(r.employerId, z), /not_finalist/);
+  room.hire(r.employerId, y);
+  assert.equal(room.phase, 'result');
+  assert.throws(() => room.startTiebreak(r.employerId, [x, y]), /wrong_phase/);
+});
+
+test('cards never duplicate across a long game with tiebreakers', () => {
+  const { room, players } = setup(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']);
+  room.updateSettings(players[0].id, { laps: 2 });
+  room.startGame(players[0].id);
+  for (let i = 0; i < room.totalRounds; i++) {
+    const r = room.round;
+    toDecision(room);
+    room.startTiebreak(r.employerId, r.applicants.slice(0, 3));
+    for (const id of r.finalists) room.pickBonus(id, 0);
+    const cards = inPlay(room);
+    assert.equal(new Set(cards).size, cards.length, `duplicate card in round ${room.roundNumber}`);
+    room.hire(r.employerId, r.finalists[0]);
+    room.nextRound(r.employerId);
+  }
+  assert.equal(room.phase, 'over');
 });

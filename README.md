@@ -21,7 +21,10 @@ No sign-up · English · Türkçe · Italiano
 2. **Read the job opening.** Each round, one player is the employer and turns over a job, like *Hostage Negotiator* or *Mall Santa*.
 3. **Build your résumé.** Every applicant gets four qualification cards and has a minute to swap them with the cards in the middle.
 4. **Pitch.** Applicants take turns revealing their cards one at a time and explaining why *Emotional Support Chicken* makes them perfect for the job. Every card has to be used.
-5. **Hire.** The employer picks the best pitch. The winner keeps the job card. Whoever holds the most jobs at the end is Employee of the Month.
+5. **Hire.** The employer picks the best pitch and the winner keeps the job card. Can't decide? Call a **tiebreaker**: each finalist gets two extra cards and uses one for a final argument.
+6. **Vote.** Everyone else votes for the funniest pitch. The fan favorite earns a star.
+
+Each job and each star is a point. Whoever has the most points at the end is Employee of the Month.
 
 Play in the same room or over a video call: the site deals the cards, you do the talking.
 
@@ -31,12 +34,21 @@ Play in the same room or over a video call: the site deals the cards, you do the
 
 ## Features
 
+**Play**
 - **Rooms with a 4-letter code.** Share `yoursite.com/ABCD` and friends land straight in the lobby.
 - **Three languages, per player.** Each person picks EN, TR or IT; the cards switch language on their screen only, so mixed groups can play together.
-- **Rules from the original game.** 10 open cards in the middle, everyone hires twice (once with 7+ players), and an optional final round where applicants compete for the employer's *real* job.
-- **"Running late" mode.** Applicants only see their cards while pitching.
-- **Pitch timer.** 45 to 120 seconds, or off.
+- **106 jobs and 325 qualifications**, from *Professional Line Stander* to *Emotional Support Chicken*.
 - **Drop-in, drop-out.** Refresh or lose Wi-Fi and you rejoin your seat. Late joiners get their turn as employer. If the host leaves, the next player takes over.
+
+**Rules**
+- **From the original game:** 10 open cards in the middle, everyone hires twice (once with 7+ players), the tiebreaker, and an optional final round where applicants compete for the employer's *real* job.
+- **Audience vote:** a fan-favorite star each round (4+ players).
+- **Timers that keep the game moving:** résumé building and each pitch end on their own when time runs out. Pick 30 to 120 seconds, or turn them off.
+- **"Running late" mode:** applicants only see their cards while pitching.
+
+**Make it your group's game**
+- **Your own cards.** Anyone in the lobby can add jobs and qualifications for that room: inside jokes, friends' names, office lore.
+- **Family mode.** Leaves out the cards marked 18+.
 - **Host tools.** Remove players in the lobby, skip a stuck round, or end the game.
 
 ## Run it locally
@@ -71,10 +83,10 @@ Run the tests with `npm test`.
 
 ### Adding cards
 
-Cards live in one JSON file with a text for every language:
+Cards live in one JSON file with a text for every language. Mark innuendo with `"adult": true` so family mode leaves it out:
 
 ```json
-{ "id": 91, "tr": "Evcil Ejderha", "en": "Pet Dragon", "it": "Drago Domestico" }
+{ "id": 326, "tr": "Evcil Ejderha", "en": "Pet Dragon", "it": "Drago Domestico" }
 ```
 
 Add new cards at the end of the list. A card's position is its id during a game, so reordering the list mid-game would mix up cards in open rooms. `npm test` fails if a card is missing a language.
@@ -97,7 +109,7 @@ scripts/bots.js    Bot players for testing
 
 The server is the only source of truth. Each player receives a view of the game with other players' hands hidden, so nobody can peek at cards through the browser's dev tools.
 
-There is no database. Cards ship with the code, and rooms live in server memory for 30 minutes after the last player leaves. A server restart ends open games.
+There is no database. Cards ship with the code; rooms, including the cards players add, live in server memory for 30 minutes after the last player leaves. A server restart ends open games.
 
 ## Deploying
 

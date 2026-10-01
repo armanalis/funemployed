@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { html } from 'htm/preact';
 import { errorText } from './i18n.js';
+import { QUALS, JOBS, setCustomCards } from './cards.js';
 import { socket, call } from './net.js';
 import { useLang, navigate, storage, CopyLinkButton, Toast } from './ui.js';
 import { Table, Roster } from './table.js';
@@ -41,6 +42,7 @@ export function RoomScreen({ code }) {
   useEffect(() => {
     const onState = (state) => {
       offset.current = state.serverNow - Date.now();
+      setCustomCards(state.custom);
       setView(state);
     };
     const onConnect = () => {
@@ -151,7 +153,10 @@ function NameForm({ code, onJoin }) {
 }
 
 const LAPS = [0, 1, 2, 3];
+const PREP = [0, 30, 60, 90, 120];
 const PITCH = [0, 45, 60, 90, 120];
+const ADULT_COUNT = QUALS.filter((c) => c.adult).length + JOBS.filter((c) => c.adult).length;
+const CUSTOM_MAX_LENGTH = 50;
 
 function Lobby({ view, act }) {
   const { T } = useLang();
@@ -161,53 +166,140 @@ function Lobby({ view, act }) {
   const missing = Math.max(0, 3 - connected);
   const s = view.settings;
   const set = (patch) => act('game:settings', patch);
+  const timerLabel = (n) => (n === 0 ? T('noTimer') : T('seconds', { n }));
 
   return html`
     <div class="lobby">
-      <section class="panel lobby-main">
-        <h1 class="lobby-title">${T('lobbyTitle')}</h1>
-        <p class="room-code-big">${view.code}</p>
-        <p>${T('inviteHint')}</p>
-        <div class="invite">
-          <input class="invite-link" readonly value=${location.href} onFocus=${(e) => e.currentTarget.select()} />
-          <${CopyLinkButton} />
-        </div>
+      <div class="lobby-main">
+        <section class="panel lobby-invite">
+          <h1 class="lobby-title">${T('lobbyTitle')}</h1>
+          <p class="room-code-big">${view.code}</p>
+          <p>${T('inviteHint')}</p>
+          <div class="invite">
+            <input class="invite-link" readonly value=${location.href} onFocus=${(e) => e.currentTarget.select()} />
+            <${CopyLinkButton} />
+          </div>
 
-        <fieldset class="settings" disabled=${!isHost}>
-          <legend>${T('settings')}</legend>
-          <label>
-            <span>${T('gameLength')}</span>
-            <select value=${s.laps} onChange=${(e) => set({ laps: Number(e.currentTarget.value) })}>
-              ${LAPS.map((n) => html`<option value=${n}>${n === 0 ? T('lapsAuto') : T('lapsN', { n })}</option>`)}
-            </select>
-          </label>
-          <label>
-            <span>${T('pitchTimer')}</span>
-            <select value=${s.pitchSeconds} onChange=${(e) => set({ pitchSeconds: Number(e.currentTarget.value) })}>
-              ${PITCH.map((n) => html`<option value=${n}>${n === 0 ? T('noTimer') : T('seconds', { n })}</option>`)}
-            </select>
-          </label>
-          <label class="check">
-            <input type="checkbox" checked=${s.myJob} onChange=${(e) => set({ myJob: e.currentTarget.checked })} />
-            <span>${T('myJobMode')}</span>
-          </label>
-          <label class="check">
-            <input type="checkbox" checked=${s.blind} onChange=${(e) => set({ blind: e.currentTarget.checked })} />
-            <span>${T('blindMode')}</span>
-          </label>
-        </fieldset>
+          <fieldset class="settings" disabled=${!isHost}>
+            <legend>${T('settings')}</legend>
+            <label>
+              <span>${T('gameLength')}</span>
+              <select value=${s.laps} onChange=${(e) => set({ laps: Number(e.currentTarget.value) })}>
+                ${LAPS.map((n) => html`<option value=${n}>${n === 0 ? T('lapsAuto') : T('lapsN', { n })}</option>`)}
+              </select>
+            </label>
+            <div class="settings-row">
+              <label>
+                <span>${T('prepTimer')}</span>
+                <select value=${s.prepSeconds} onChange=${(e) => set({ prepSeconds: Number(e.currentTarget.value) })}>
+                  ${PREP.map((n) => html`<option value=${n}>${timerLabel(n)}</option>`)}
+                </select>
+              </label>
+              <label>
+                <span>${T('pitchTimer')}</span>
+                <select value=${s.pitchSeconds} onChange=${(e) => set({ pitchSeconds: Number(e.currentTarget.value) })}>
+                  ${PITCH.map((n) => html`<option value=${n}>${timerLabel(n)}</option>`)}
+                </select>
+              </label>
+            </div>
+            <p class="settings-note">${T('timerNote')}</p>
+            <label class="check">
+              <input type="checkbox" checked=${s.family} onChange=${(e) => set({ family: e.currentTarget.checked })} />
+              <span>${T('familyMode', { n: ADULT_COUNT })}</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" checked=${s.votes} onChange=${(e) => set({ votes: e.currentTarget.checked })} />
+              <span>${T('votesMode')}</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" checked=${s.myJob} onChange=${(e) => set({ myJob: e.currentTarget.checked })} />
+              <span>${T('myJobMode')}</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" checked=${s.blind} onChange=${(e) => set({ blind: e.currentTarget.checked })} />
+              <span>${T('blindMode')}</span>
+            </label>
+          </fieldset>
 
-        <div class="lobby-start">
-          ${missing > 0 && html`<p>${T('needMore', { n: missing })}</p>`}
-          ${isHost
-            ? html`<button type="button" class="btn btn-primary btn-lg" disabled=${missing > 0} onClick=${() => act('game:start')}>
-                ${T('startGame')}
-              </button>`
-            : html`<p class="status-line">${T('waitingHost', { name: host?.name ?? '' })}</p>`}
-        </div>
-      </section>
+          <div class="lobby-start">
+            ${missing > 0 && html`<p>${T('needMore', { n: missing })}</p>`}
+            ${isHost
+              ? html`<button type="button" class="btn btn-primary btn-lg" disabled=${missing > 0} onClick=${() => act('game:start')}>
+                  ${T('startGame')}
+                </button>`
+              : html`<p class="status-line">${T('waitingHost', { name: host?.name ?? '' })}</p>`}
+          </div>
+        </section>
+
+        <${CustomCards} view=${view} act=${act} />
+      </div>
 
       <${Roster} view=${view} act=${act} />
     </div>
+  `;
+}
+
+function CustomCards({ view, act }) {
+  const { T } = useLang();
+  const [kind, setKind] = useState('qual');
+  const [text, setText] = useState('');
+  const isHost = view.hostId === view.me;
+  const cards = [
+    ...view.custom.jobs.map((c) => ({ ...c, kind: 'job' })),
+    ...view.custom.quals.map((c) => ({ ...c, kind: 'qual' })),
+  ].sort((a, b) => b.id - a.id);
+
+  async function add(e) {
+    e.preventDefault();
+    const res = await act('game:customAdd', { kind, text });
+    if (!res.error) setText('');
+  }
+
+  return html`
+    <section class="panel custom-cards" aria-labelledby="custom-title">
+      <h2 id="custom-title" class="custom-title">${T('customTitle')}</h2>
+      <p class="custom-help">${T('customHelp')}</p>
+      <form class="custom-form" onSubmit=${add}>
+        <div class="kind-switch" role="radiogroup" aria-label=${T('customKind')}>
+          ${['qual', 'job'].map(
+            (k) => html`<label class="kind-option">
+              <input type="radio" name="custom-kind" value=${k} checked=${kind === k} onChange=${() => setKind(k)} />
+              <span>${k === 'job' ? T('customJob') : T('customQual')}</span>
+            </label>`,
+          )}
+        </div>
+        <div class="custom-input-row">
+          <label class="visually-hidden" for="custom-text">${T('customPlaceholder')}</label>
+          <input
+            id="custom-text"
+            value=${text}
+            onInput=${(e) => setText(e.currentTarget.value)}
+            maxlength=${CUSTOM_MAX_LENGTH}
+            placeholder=${kind === 'job' ? T('customJobExample') : T('customQualExample')}
+            autocomplete="off"
+          />
+          <button type="submit" class="btn" disabled=${!text.trim()}>${T('addCard')}</button>
+        </div>
+      </form>
+      ${cards.length > 0 &&
+      html`<p class="status-line">${T('customCount', { jobs: view.custom.jobs.length, quals: view.custom.quals.length })}</p>
+        <ul class="custom-list">
+          ${cards.map(
+            (c) => html`<li class=${c.kind === 'job' ? 'is-job' : 'is-qual'}>
+              <span class="custom-text">${c.text}</span>
+              <span class="custom-by">${c.kind === 'job' ? T('customJob') : T('customQual')}, ${T('byName', { name: c.by })}</span>
+              ${(isHost || c.byId === view.me) &&
+              html`<button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                aria-label=${T('removeCard', { text: c.text })}
+                onClick=${() => act('game:customRemove', { kind: c.kind, id: c.id })}
+              >
+                ${T('remove')}
+              </button>`}
+            </li>`,
+          )}
+        </ul>`}
+    </section>
   `;
 }

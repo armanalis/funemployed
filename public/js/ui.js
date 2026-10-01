@@ -46,13 +46,14 @@ export function JobCard({ job, employerName = '', size = '' }) {
 
 // A qualification index card. `id === null` means face down.
 // With onClick it becomes a button; `pending` marks a card only its owner can see yet.
-export function QualCard({ id, onClick, selected = false, pending = false, label, tilt = 0 }) {
+export function QualCard({ id, onClick, selected = false, pending = false, bonus = false, label, tilt = 0 }) {
   const { lang } = useLang();
   const faceDown = id == null;
   const text = faceDown ? '' : qualText(lang, id);
   const className = [
     'qcard',
     text.length > 30 && 'is-long',
+    bonus && 'is-bonus',
     faceDown && 'is-down',
     selected && 'is-selected',
     pending && 'is-pending',

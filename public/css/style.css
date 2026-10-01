@@ -705,6 +705,11 @@ select {
 
 .lobby-main {
   display: grid;
+  gap: 1.5rem;
+}
+
+.lobby-invite {
+  display: grid;
   gap: 1rem;
 }
 
@@ -745,6 +750,18 @@ select {
   font-weight: 600;
 }
 
+.settings-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.settings-note {
+  margin-top: -0.4rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
 .settings label.check {
   grid-template-columns: auto 1fr;
   align-items: start;
@@ -768,6 +785,122 @@ select {
   justify-items: start;
   gap: 0.75rem;
   margin-top: 0.5rem;
+}
+
+/* ---------- custom cards ---------- */
+
+.custom-cards {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.custom-title {
+  font-size: 1.3rem;
+  font-weight: 850;
+  font-stretch: 115%;
+}
+
+.custom-help {
+  max-width: 40rem;
+  color: var(--ink-soft);
+}
+
+.custom-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.kind-switch {
+  display: inline-flex;
+  justify-self: start;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.kind-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.kind-option span {
+  display: block;
+  padding: 0.25rem 0.9rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.kind-option input:checked + span {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.kind-option input:focus-visible + span {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.custom-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.custom-input-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.65rem 0.8rem;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-type);
+  font-weight: 700;
+}
+
+.custom-list {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each custom card looks like the card it will become: manila for jobs, index card for qualifications. */
+.custom-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgb(22 27 69 / 0.2);
+}
+
+.custom-list li.is-qual {
+  background: #fff;
+  border-left: 4px solid var(--rule-red);
+}
+
+.custom-list li.is-job {
+  background: var(--manila);
+  border-left: 4px solid var(--manila-deep);
+}
+
+.custom-text {
+  font-family: var(--font-type);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.custom-by {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.custom-list .btn {
+  margin-left: auto;
 }
 
 /* ---------- roster (sign-in sheet) ---------- */
@@ -867,6 +1000,12 @@ select {
   height: 3px;
   border-radius: 2px 2px 0 0;
   background: var(--manila-deep);
+}
+
+.star-pip {
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--manila-deep);
 }
 
 .host-tools {
@@ -1039,7 +1178,8 @@ select {
   padding: 0.75rem;
 }
 
-.resume.is-compact .resume-cards {
+.resume.is-compact .resume-cards,
+.resume.is-compact .bonus-row {
   max-width: 46rem;
 }
 
@@ -1058,6 +1198,72 @@ select {
   font-size: 1.15rem;
   font-weight: 800;
   font-stretch: 110%;
+}
+
+.resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.resume-actions .btn-ghost[aria-pressed='true'] {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--paper);
+}
+
+.vote-btn.is-voted {
+  --btn-bg: var(--highlight);
+  border-color: var(--ink);
+}
+
+.tag-votes,
+.board .tag-votes {
+  background: var(--highlight);
+  color: var(--ink);
+}
+
+.tag-favorite,
+.board .tag-favorite {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.favorite-line {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.favorite-line [aria-hidden] {
+  color: var(--highlight);
+}
+
+/* Tiebreaker: the extra cards sit under the résumé, in manila so they read as "added later". */
+.bonus-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.bonus-row.is-choosing {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 50%;
+}
+
+.qcard.is-bonus .qcard-front {
+  background:
+    linear-gradient(var(--manila-deep) 0 0) 0 calc(var(--pad) + var(--lh) - 2px) / 100% 2px no-repeat,
+    var(--manila);
+}
+
+.tiebreak-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.9rem 1rem;
+  border: 2px dashed rgb(255 255 255 / 0.35);
+  border-radius: 10px;
 }
 
 .resume-list {
@@ -1231,8 +1437,21 @@ select {
 
 @media (max-width: 640px) {
   .hand,
-  .resume-cards {
+  .resume-cards,
+  .bonus-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bonus-row.is-choosing {
+    max-width: none;
+  }
+
+  .settings-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .resume-head {
+    flex-wrap: wrap;
   }
 
   .pool {

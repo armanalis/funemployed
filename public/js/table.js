@@ -1,18 +1,26 @@
 import { useEffect, useState } from 'preact/hooks';
 import { html } from 'htm/preact';
 import { jobText } from './i18n.js';
+import { MY_JOB } from './cards.js';
 import { useLang, JobCard, QualCard, Countdown, CopyLinkButton } from './ui.js';
+
+const IN_GAME = ['prep', 'interview', 'decision', 'tiebreak', 'result'];
+const VOTING_PHASES = ['decision', 'tiebreak', 'result'];
 
 function derive(view) {
   const byId = Object.fromEntries(view.players.map((p) => [p.id, p]));
   const r = view.round;
+  const employer = r ? byId[r.employerId] : null;
   return {
     byId,
     r,
     isHost: view.hostId === view.me,
-    employer: r ? byId[r.employerId] : null,
+    employer,
     isEmployer: r?.employerId === view.me,
     isApplicant: Boolean(r?.applicants.includes(view.me)),
+    // The employer decides; if they dropped out, the host decides for them.
+    decider: employer?.connected ? employer.id : view.hostId,
+    canVote: Boolean(r?.voting && VOTING_PHASES.includes(view.phase) && r.employerId !== view.me),
     nameOf: (id) => byId[id]?.name ?? '',
   };
 }
@@ -24,6 +32,7 @@ export function Table({ view, act, offset }) {
   else if (view.phase === 'prep') board = html`<${Prep} view=${view} d=${d} act=${act} offset=${offset} />`;
   else if (view.phase === 'interview') board = html`<${Interview} view=${view} d=${d} act=${act} offset=${offset} />`;
   else if (view.phase === 'decision') board = html`<${Decision} view=${view} d=${d} act=${act} />`;
+  else if (view.phase === 'tiebreak') board = html`<${Tiebreak} view=${view} d=${d} act=${act} />`;
   else board = html`<${Result} view=${view} d=${d} act=${act} />`;
 
   return html`
@@ -47,8 +56,20 @@ function RoundHeader({ view, d }) {
         <p class="round-employer">
           <span class="tag tag-employer">${T('employer')}</span> ${d.employer?.name}
         </p>
-        ${d.r.job === -1 && html`<p class="round-note">${T('myJobHint', { name: d.employer?.name })}</p>`}
+        ${d.r.job === MY_JOB && html`<p class="round-note">${T('myJobHint', { name: d.employer?.name })}</p>`}
       </div>
+    </div>
+  `;
+}
+
+function PhaseHead({ title, help, children }) {
+  return html`
+    <div class="phase-head">
+      <div>
+        <h2 class="phase-title">${title}</h2>
+        ${help && html`<p class="phase-help">${help}</p>`}
+      </div>
+      ${children}
     </div>
   `;
 }
@@ -92,13 +113,9 @@ function Prep({ view, d, act, offset }) {
 
   return html`
     <div class="phase">
-      <div class="phase-head">
-        <div>
-          <h2 class="phase-title">${title}</h2>
-          ${help && html`<p class="phase-help">${help}</p>`}
-        </div>
-        <${Countdown} startedAt=${r.prepStartedAt} seconds=${view.prepSeconds} offset=${offset} />
-      </div>
+      <${PhaseHead} title=${title} help=${help}>
+        <${Countdown} startedAt=${r.prepStartedAt} seconds=${view.settings.prepSeconds} offset=${offset} />
+      <//>
 
       <h3 class="zone-title">${T('pool')}</h3>
       <div class="card-grid pool">
@@ -150,7 +167,39 @@ function Prep({ view, d, act, offset }) {
   `;
 }
 
-// ---------- interviews ----------
+// ---------- one applicant's résumé ----------
+
+function VoteButton({ view, d, id, act }) {
+  const { T } = useLang();
+  if (!d.canVote || id === view.me || d.r.skipped) return null;
+  const mine = d.r.myVote === id;
+  return html`<button
+    type="button"
+    class="btn btn-sm vote-btn ${mine ? 'is-voted' : 'btn-ghost'}"
+    aria-pressed=${mine}
+    onClick=${() => act('game:vote', { playerId: id })}
+  >
+    <span aria-hidden="true">★</span> ${mine ? T('voted') : T('vote')}
+  </button>`;
+}
+
+// The tiebreaker card under a finalist's résumé: two to choose from for the finalist,
+// face down for everyone else until it's picked.
+function BonusRow({ view, d, id, act }) {
+  const { T } = useLang();
+  const r = d.r;
+  if (!r.finalists.includes(id)) return null;
+  const picked = r.bonusPicks[id];
+  const choosing = id === view.me && picked == null && view.phase === 'tiebreak';
+  let cards;
+  if (picked != null) cards = html`<${QualCard} id=${picked} bonus label=${T('bonusTag')} />`;
+  else if (choosing) {
+    cards = r.bonusHand.map(
+      (card, i) => html`<${QualCard} key=${card} id=${card} bonus label=${T('pickThis')} onClick=${() => act('game:pickBonus', { idx: i })} />`,
+    );
+  } else cards = html`<${QualCard} id=${null} />`;
+  return html`<div class="card-grid bonus-row ${choosing ? 'is-choosing' : ''}">${cards}</div>`;
+}
 
 function Resume({ view, d, id, act, children, stamp = false, compact = false }) {
   const { T } = useLang();
@@ -159,11 +208,20 @@ function Resume({ view, d, id, act, children, stamp = false, compact = false }) 
   const isCurrent = r.currentId === id;
   const shown = r.resumes[id] ?? [];
   const p = d.byId[id];
+  const votes = r.voteCounts[id] ?? 0;
+  const showVotes = view.phase === 'result' && r.voting && !r.skipped;
   return html`
     <article class="resume ${compact ? 'is-compact' : ''} ${isCurrent ? 'is-current' : ''} ${p?.connected ? '' : 'is-offline'}">
       <header class="resume-head">
-        <h3 class="resume-name">${p?.name}${isMine && html` <span class="tag">${T('you')}</span>`}</h3>
-        ${children}
+        <h3 class="resume-name">
+          ${p?.name}${isMine && html` <span class="tag">${T('you')}</span>`}
+          ${showVotes && votes > 0 && html` <span class="tag tag-votes">★ ${votes}</span>`}
+          ${r.fanFavoriteId === id && html` <span class="tag tag-favorite">${T('fanFavoriteTag')}</span>`}
+        </h3>
+        <div class="resume-actions">
+          <${VoteButton} view=${view} d=${d} id=${id} act=${act} />
+          ${children}
+        </div>
       </header>
       <div class="card-grid resume-cards">
         ${shown.map((card, i) => {
@@ -180,10 +238,34 @@ function Resume({ view, d, id, act, children, stamp = false, compact = false }) 
           />`;
         })}
       </div>
+      <${BonusRow} view=${view} d=${d} id=${id} act=${act} />
       ${stamp && html`<p class="stamp" aria-live="polite">${T('stamp')}</p>`}
     </article>
   `;
 }
+
+// `actions(id)` renders extra buttons in each résumé's header.
+function ResumeList({ view, d, act, ids, compact = false, actions }) {
+  if (ids.length === 0) return null;
+  return html`<div class="resume-list">
+    ${ids.map(
+      (id) => html`<${Resume} key=${id} view=${view} d=${d} id=${id} act=${act} compact=${compact}>
+        ${actions?.(id)}
+      <//>`,
+    )}
+  </div>`;
+}
+
+function VoteStatus({ d }) {
+  const { T } = useLang();
+  const r = d.r;
+  if (!r.voting || r.skipped) return null;
+  return html`<p class="status-line">
+    ${T('votesCast', { n: r.votesCast, total: r.voters })}${d.canVote && !r.myVote ? ` ${T('voteHelp')}` : ''}
+  </p>`;
+}
+
+// ---------- interviews ----------
 
 function Interview({ view, d, act, offset }) {
   const { T } = useLang();
@@ -202,13 +284,9 @@ function Interview({ view, d, act, offset }) {
 
   return html`
     <div class="phase">
-      <div class="phase-head">
-        <div>
-          <h2 class="phase-title">${isMe ? T('yourTurnTitle') : T('nowPitching', { name: d.nameOf(current) })}</h2>
-          ${help && html`<p class="phase-help">${help}</p>`}
-        </div>
+      <${PhaseHead} title=${isMe ? T('yourTurnTitle') : T('nowPitching', { name: d.nameOf(current) })} help=${help}>
         <${Countdown} key=${current} startedAt=${r.turnStartedAt} seconds=${view.settings.pitchSeconds} offset=${offset} />
-      </div>
+      <//>
 
       <${Resume} view=${view} d=${d} id=${current} act=${act} />
 
@@ -222,60 +300,129 @@ function Interview({ view, d, act, offset }) {
         </button>`}
       </div>
 
-      ${upcoming.length > 0 &&
-      html`<h3 class="zone-title">${T('upNext')}</h3>
-        <div class="resume-list">
-          ${upcoming.map((id) => html`<${Resume} key=${id} view=${view} d=${d} id=${id} act=${act} compact />`)}
-        </div>`}
-      ${done.length > 0 &&
-      html`<h3 class="zone-title">${T('pitched')}</h3>
-        <div class="resume-list">
-        ${done.map((id) => html`<${Resume} key=${id} view=${view} d=${d} id=${id} act=${act} compact />`)}
-      </div>`}
+      ${upcoming.length > 0 && html`<h3 class="zone-title">${T('upNext')}</h3>`}
+      <${ResumeList} view=${view} d=${d} act=${act} ids=${upcoming} compact />
+      ${done.length > 0 && html`<h3 class="zone-title">${T('pitched')}</h3>`}
+      <${ResumeList} view=${view} d=${d} act=${act} ids=${done} compact />
     </div>
   `;
 }
 
 // ---------- hiring ----------
 
+function HireButton({ act, id }) {
+  const { T } = useLang();
+  return html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => act('game:hire', { playerId: id })}>
+    ${T('hire')}
+  </button>`;
+}
+
 function Decision({ view, d, act }) {
   const { T } = useLang();
-  const decider = d.employer?.connected ? d.employer.id : view.hostId;
-  const canHire = view.me === decider;
+  const r = d.r;
+  const canHire = view.me === d.decider;
+  const [finalists, setFinalists] = useState([]);
+  const candidates = r.applicants.filter((id) => d.byId[id]?.connected);
+  // With only two applicants there is nothing to choose: both are finalists.
+  const pickFinalists = candidates.length > 2;
+  const chosen = pickFinalists ? finalists.filter((id) => candidates.includes(id)) : candidates;
+  const toggle = (id) => setFinalists((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+
+  let help = T('deciding', { name: d.nameOf(d.decider) });
+  if (canHire) help = T('decisionHelp');
+
   return html`
     <div class="phase">
-      <div class="phase-head">
-        <div>
-          <h2 class="phase-title">${T('decisionTitle')}</h2>
-          <p class="phase-help">${canHire ? T('decisionHelp') : T('deciding', { name: d.nameOf(decider) })}</p>
-        </div>
-      </div>
-      <div class="resume-list">
-        ${d.r.applicants.map(
-          (id) => html`<${Resume} key=${id} view=${view} d=${d} id=${id} act=${act}>
-            ${canHire &&
-            html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => act('game:hire', { playerId: id })}>
-              ${T('hire')}
+      <${PhaseHead} title=${T('decisionTitle')} help=${help} />
+      <${VoteStatus} d=${d} />
+      <${ResumeList}
+        view=${view}
+        d=${d}
+        act=${act}
+        ids=${r.applicants}
+        actions=${(id) =>
+          canHire &&
+          html`
+            ${pickFinalists &&
+            candidates.includes(id) &&
+            html`<button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              aria-pressed=${chosen.includes(id)}
+              onClick=${() => toggle(id)}
+            >
+              ${chosen.includes(id) ? '✓ ' : ''}${T('finalist')}
             </button>`}
-          <//>`,
-        )}
-      </div>
+            <${HireButton} act=${act} id=${id} />
+          `}
+      />
+      ${canHire &&
+      candidates.length >= 2 &&
+      html`<div class="tiebreak-bar">
+        <p>${pickFinalists ? T('tiebreakOffer') : T('tiebreakOfferTwo')}</p>
+        <button
+          type="button"
+          class="btn"
+          disabled=${chosen.length < 2}
+          onClick=${() => act('game:tiebreak', { finalists: chosen })}
+        >
+          ${T('tiebreakStart', { n: chosen.length })}
+        </button>
+      </div>`}
+    </div>
+  `;
+}
+
+function Tiebreak({ view, d, act }) {
+  const { T } = useLang();
+  const r = d.r;
+  const canHire = view.me === d.decider;
+  const isFinalist = r.finalists.includes(view.me);
+  const waiting = r.finalists.filter((id) => r.bonusPicks[id] == null);
+  const others = r.applicants.filter((id) => !r.finalists.includes(id));
+
+  let help = T('tiebreakHelpOthers');
+  if (isFinalist && r.bonusPicks[view.me] == null) help = T('tiebreakHelpFinalist');
+  else if (canHire) help = T('tiebreakHelpEmployer');
+
+  return html`
+    <div class="phase">
+      <${PhaseHead} title=${T('tiebreakTitle')} help=${help} />
+      ${waiting.length > 0 &&
+      html`<p class="status-line">${T('tiebreakWaiting', { names: waiting.map(d.nameOf).join(', ') })}</p>`}
+      <${VoteStatus} d=${d} />
+      <${ResumeList}
+        view=${view}
+        d=${d}
+        act=${act}
+        ids=${r.finalists}
+        actions=${(id) => canHire && html`<${HireButton} act=${act} id=${id} />`}
+      />
+      <${ResumeList} view=${view} d=${d} act=${act} ids=${others} compact />
     </div>
   `;
 }
 
 function Result({ view, d, act }) {
   const { T } = useLang();
-  const winner = d.r.winnerId;
+  const r = d.r;
+  const winner = r.winnerId;
   const canContinue = d.isEmployer || (d.isHost && !d.employer?.connected);
   const isLast = view.roundNumber >= view.totalRounds;
-  const others = d.r.applicants.filter((id) => id !== winner);
+  const others = r.applicants.filter((id) => id !== winner);
+
+  let favorite = '';
+  if (r.voting && !r.skipped) {
+    if (r.fanFavoriteId) favorite = T('fanFavorite', { name: d.nameOf(r.fanFavoriteId) });
+    else favorite = r.votesCast > 0 ? T('voteTie') : T('votesNone');
+  }
+
   return html`
     <div class="phase">
-      <div class="phase-head">
-        <h2 class="phase-title">${winner ? T('gotTheJob', { name: d.nameOf(winner) }) : T('nobodyHired')}</h2>
-      </div>
+      <${PhaseHead} title=${winner ? T('gotTheJob', { name: d.nameOf(winner) }) : T('nobodyHired')} />
       ${winner && html`<${Resume} view=${view} d=${d} id=${winner} act=${act} stamp />`}
+      ${favorite && html`<p class="favorite-line"><span aria-hidden="true">★</span> ${favorite}</p>`}
+      ${d.canVote && !r.skipped && html`<p class="status-line">${T('voteStillOpen')}</p>`}
       <div class="actions">
         ${canContinue
           ? html`<button type="button" class="btn btn-primary btn-lg" onClick=${() => act('game:nextRound')}>
@@ -283,23 +430,22 @@ function Result({ view, d, act }) {
             </button>`
           : html`<p class="status-line">${T('waitNext', { name: d.employer?.connected ? d.employer.name : d.nameOf(view.hostId) })}</p>`}
       </div>
-      ${winner &&
-      others.length > 0 &&
-      html`<div class="resume-list">
-        ${others.map((id) => html`<${Resume} key=${id} view=${view} d=${d} id=${id} act=${act} compact />`)}
-      </div>`}
+      ${winner && html`<${ResumeList} view=${view} d=${d} act=${act} ids=${others} compact />`}
     </div>
   `;
 }
 
 // ---------- end of game ----------
 
+const score = (p) => p.jobs.length + p.stars;
+
 function GameOver({ view, d, act }) {
   const { lang, T } = useLang();
-  const ranked = [...view.players].sort((a, b) => b.jobs.length - a.jobs.length);
-  const best = ranked[0]?.jobs.length ?? 0;
-  const winners = best > 0 ? ranked.filter((p) => p.jobs.length === best) : [];
+  const ranked = [...view.players].sort((a, b) => score(b) - score(a) || b.jobs.length - a.jobs.length);
+  const best = ranked[0] ? score(ranked[0]) : 0;
+  const winners = best > 0 ? ranked.filter((p) => score(p) === best) : [];
   const jobCount = (n) => (n === 0 ? T('noJobs') : n === 1 ? T('job') : T('jobs', { n }));
+  const tally = (p) => (p.stars > 0 ? T('jobsAndStars', { jobs: jobCount(p.jobs.length), stars: T(p.stars === 1 ? 'star' : 'stars', { n: p.stars }) }) : jobCount(p.jobs.length));
 
   return html`
     <div class="phase game-over">
@@ -307,18 +453,19 @@ function GameOver({ view, d, act }) {
       html`<div class="plaque">
         <p class="plaque-title">${winners.length > 1 ? T('overTitleMany') : T('overTitle')}</p>
         <p class="plaque-name">${winners.map((p) => p.name).join(' & ')}</p>
-        <p class="plaque-count">${jobCount(best)}</p>
+        <p class="plaque-count">${tally(winners[0])}</p>
       </div>`}
       <ol class="ranking">
         ${ranked.map(
           (p) => html`<li>
-            <p class="ranking-name">${p.name} <span class="ranking-count">${jobCount(p.jobs.length)}</span></p>
+            <p class="ranking-name">${p.name} <span class="ranking-count">${tally(p)}</span></p>
             <ul class="job-tags">
               ${p.jobs.map((j) => html`<li class="job-tag">${jobText(lang, j.job, j.employer)}</li>`)}
             </ul>
           </li>`,
         )}
       </ol>
+      ${view.settings.votes && html`<p class="status-line">${T('scoringNote')}</p>`}
       <div class="actions">
         ${d.isHost
           ? html`<button type="button" class="btn btn-primary btn-lg" onClick=${() => act('game:lobby')}>${T('playAgain')}</button>`
@@ -334,7 +481,7 @@ export function Roster({ view, act }) {
   const { T } = useLang();
   const d = view.round ? derive(view) : null;
   const isHost = view.hostId === view.me;
-  const inGame = ['prep', 'interview', 'decision', 'result'].includes(view.phase);
+  const inGame = IN_GAME.includes(view.phase);
   const [confirming, setConfirming] = useState(false);
 
   return html`
@@ -358,9 +505,10 @@ export function Roster({ view, act }) {
               ${!p.connected && html`<span class="tag">${T('offline')}</span>`}
             </span>
             ${view.phase !== 'lobby' &&
-            html`<span class="player-score" title=${p.jobs.length}>
+            html`<span class="player-score">
               ${p.jobs.map(() => html`<span class="folder-pip" aria-hidden="true"></span>`)}
-              <span class="visually-hidden">${p.jobs.length}</span>
+              ${Array.from({ length: p.stars }, () => html`<span class="star-pip" aria-hidden="true">★</span>`)}
+              <span class="visually-hidden">${T('jobsAndStars', { jobs: p.jobs.length, stars: p.stars })}</span>
             </span>`}
             ${view.phase === 'lobby' &&
             isHost &&

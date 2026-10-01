@@ -26,7 +26,15 @@ function startBot(name) {
   async function onState(s) {
     const r = s.round;
     // Act once per distinct situation.
-    const key = [s.phase, s.roundNumber, r?.currentId, r?.hand?.join(), s.players.find((p) => p.id === s.me)?.ready].join('|');
+    const key = [
+      s.phase,
+      s.roundNumber,
+      r?.currentId,
+      r?.hand?.join(),
+      s.players.find((p) => p.id === s.me)?.ready,
+      r?.finalists?.join(),
+      r && Object.values(r.bonusPicks ?? {}).join(),
+    ].join('|');
     if (busy || key === lastKey || !r) return;
     lastKey = key;
     busy = true;
@@ -50,10 +58,28 @@ function startBot(name) {
         await emit('game:finishPitch');
       } else if (s.phase === 'decision' && decider === me) {
         await wait(DELAY * 2);
-        await emit('game:hire', { playerId: pick(r.applicants) });
+        // Now and then the bot can't decide and calls a tiebreaker between two applicants.
+        if (Math.random() < 0.4) {
+          const finalists = [...r.applicants].sort(() => Math.random() - 0.5).slice(0, 2);
+          await emit('game:tiebreak', { finalists });
+        } else {
+          await emit('game:hire', { playerId: pick(r.applicants) });
+        }
+      } else if (s.phase === 'tiebreak' && r.finalists.includes(me) && r.bonusPicks[me] == null) {
+        await wait(DELAY * 1.5);
+        await emit('game:pickBonus', { idx: Math.floor(Math.random() * 2) });
+      } else if (s.phase === 'tiebreak' && decider === me && r.finalists.every((id) => r.bonusPicks[id] != null)) {
+        await wait(DELAY * 2);
+        await emit('game:hire', { playerId: pick(r.finalists) });
       } else if (s.phase === 'result' && r.employerId === me) {
-        await wait(DELAY * 2.5);
+        await wait(DELAY * 3);
         await emit('game:nextRound');
+      }
+      // Everyone but the employer votes for someone else's pitch.
+      const votable = r.applicants.filter((id) => id !== me);
+      if (r.voting && !r.myVote && ['decision', 'tiebreak', 'result'].includes(s.phase) && r.employerId !== me && votable.length) {
+        await wait(DELAY);
+        await emit('game:vote', { playerId: pick(votable) });
       }
     } finally {
       busy = false;

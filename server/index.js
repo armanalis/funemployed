@@ -40,6 +40,24 @@ function broadcast(room) {
     const socket = io.sockets.sockets.get(id);
     if (socket) socket.emit('state', room.view(socket.data.playerId));
   }
+  scheduleDeadline(room);
+}
+
+// One timer per room for whichever phase ends on its own (résumé building, pitches).
+const timers = new Map();
+
+function scheduleDeadline(room) {
+  clearTimeout(timers.get(room.code));
+  timers.delete(room.code);
+  const due = room.deadline();
+  if (due === null) return;
+  const timer = setTimeout(() => {
+    timers.delete(room.code);
+    if (rooms.get(room.code) !== room) return;
+    if (room.tick()) broadcast(room);
+    else scheduleDeadline(room);
+  }, Math.max(0, due - Date.now()) + 20);
+  timers.set(room.code, timer);
 }
 
 io.on('connection', (socket) => {
@@ -97,6 +115,11 @@ io.on('connection', (socket) => {
     'game:reveal': (room, me, p) => room.reveal(me, p?.handIdx),
     'game:finishPitch': (room, me) => room.finishPitch(me),
     'game:hire': (room, me, p) => room.hire(me, p?.playerId),
+    'game:tiebreak': (room, me, p) => room.startTiebreak(me, p?.finalists),
+    'game:pickBonus': (room, me, p) => room.pickBonus(me, p?.idx),
+    'game:vote': (room, me, p) => room.vote(me, p?.playerId),
+    'game:customAdd': (room, me, p) => room.addCustomCard(me, p?.kind, p?.text),
+    'game:customRemove': (room, me, p) => room.removeCustomCard(me, p?.kind, p?.id),
     'game:skipRound': (room, me) => room.skipRound(me),
     'game:nextRound': (room, me) => room.nextRound(me),
     'game:end': (room, me) => room.endGame(me),
@@ -127,7 +150,11 @@ io.on('connection', (socket) => {
 setInterval(() => {
   const cutoff = Date.now() - ROOM_IDLE_MS;
   for (const [code, room] of rooms) {
-    if (room.connectedPlayers().length === 0 && room.lastActive < cutoff) rooms.delete(code);
+    if (room.connectedPlayers().length === 0 && room.lastActive < cutoff) {
+      clearTimeout(timers.get(code));
+      timers.delete(code);
+      rooms.delete(code);
+    }
   }
 }, 5 * 60 * 1000).unref();
 
