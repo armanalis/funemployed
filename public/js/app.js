@@ -73,12 +73,17 @@ function CoffeeLink({ className = 'coffee' }) {
   </a>`;
 }
 
-const pick = (n, max) => {
+// The home page is the first thing new visitors see, so its demo hand leaves out 18+ cards.
+const familyIds = (cards) => cards.flatMap((card, i) => (card.adult ? [] : [i]));
+const DEMO_JOBS = familyIds(JOBS);
+const DEMO_QUALS = familyIds(QUALS);
+
+const pick = (n, ids) => {
   const chosen = new Set();
-  while (chosen.size < n) chosen.add(Math.floor(Math.random() * max));
+  while (chosen.size < n) chosen.add(ids[Math.floor(Math.random() * ids.length)]);
   return [...chosen];
 };
-const dealDemo = () => ({ job: pick(1, JOBS.length)[0], quals: pick(4, QUALS.length) });
+const dealDemo = () => ({ job: pick(1, DEMO_JOBS)[0], quals: pick(4, DEMO_QUALS) });
 const DEMO_TILTS = [-3, 2, -1.5, 3.5];
 
 function Home() {

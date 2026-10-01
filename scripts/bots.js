@@ -77,7 +77,7 @@ function startBot(name) {
       }
       // Everyone but the employer votes for someone else's pitch.
       const votable = r.applicants.filter((id) => id !== me);
-      if (r.voting && !r.myVote && ['decision', 'tiebreak', 'result'].includes(s.phase) && r.employerId !== me && votable.length) {
+      if (r.voting && !r.myVote && ['decision', 'tiebreak'].includes(s.phase) && r.employerId !== me && votable.length) {
         await wait(DELAY);
         await emit('game:vote', { playerId: pick(votable) });
       }
@@ -87,8 +87,11 @@ function startBot(name) {
   }
 
   socket.on('state', onState);
+  // After a dropped connection the bot rejoins its own seat with its token.
+  let token;
   socket.on('connect', async () => {
-    const res = await emit('room:join', { code, name });
+    const res = await emit('room:join', { code, name, token });
+    if (res.token) token = res.token;
     console.log(res.error ? `${name}: ${res.error}` : `${name} joined ${code.toUpperCase()}`);
   });
   return socket;

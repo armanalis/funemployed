@@ -21,8 +21,8 @@ No sign-up · English · Türkçe · Italiano
 2. **Read the job opening.** Each round, one player is the employer and turns over a job, like *Hostage Negotiator* or *Mall Santa*.
 3. **Build your résumé.** Every applicant gets four qualification cards and has a minute to swap them with the cards in the middle.
 4. **Pitch.** Applicants take turns revealing their cards one at a time and explaining why *Emotional Support Chicken* makes them perfect for the job. Every card has to be used.
-5. **Hire.** The employer picks the best pitch and the winner keeps the job card. Can't decide? Call a **tiebreaker**: each finalist gets two extra cards and uses one for a final argument.
-6. **Vote.** Everyone else votes for the funniest pitch. The fan favorite earns a star.
+5. **Vote.** While the employer thinks it over, everyone else votes for the funniest pitch. The fan favorite earns a star.
+6. **Hire.** The employer picks the best pitch and the winner keeps the job card. Hiring closes the vote. Can't decide? Call a **tiebreaker**: each finalist gets two extra cards and uses one for a final argument.
 
 Each job and each star is a point. Whoever has the most points at the end is Employee of the Month.
 
@@ -38,11 +38,11 @@ Play in the same room or over a video call: the site deals the cards, you do the
 - **Rooms with a 4-letter code.** Share `yoursite.com/ABCD` and friends land straight in the lobby.
 - **Three languages, per player.** Each person picks EN, TR or IT; the cards switch language on their screen only, so mixed groups can play together.
 - **106 jobs and 325 qualifications**, from *Professional Line Stander* to *Emotional Support Chicken*.
-- **Drop-in, drop-out.** Refresh or lose Wi-Fi and you rejoin your seat. Late joiners get their turn as employer. If the host leaves, the next player takes over.
+- **Drop-in, drop-out.** Refresh, close the tab or lose Wi-Fi and you rejoin your seat with your cards and points. On another device, type the same name to get your seat back. Late joiners get their turn as employer. If the host leaves, the next player takes over.
 
 **Rules**
 - **From the original game:** 10 open cards in the middle, everyone hires twice (once with 7+ players), the tiebreaker, and an optional final round where applicants compete for the employer's *real* job.
-- **Audience vote:** a fan-favorite star each round (4+ players).
+- **Audience vote:** a fan-favorite star each round (4+ players; with 3 players there are only two applicants to vote between).
 - **Timers that keep the game moving:** résumé building and each pitch end on their own when time runs out. Pick 30 to 120 seconds, or turn them off.
 - **"Running late" mode:** applicants only see their cards while pitching.
 
@@ -102,6 +102,7 @@ Add new cards at the end of the list. A card's position is its id during a game,
 ```
 server/index.js    Express serves the site; Socket.IO carries every game action
 server/game.js     The rules: one Room object per game, kept in memory
+server/rooms.js    Room codes, the room limit and clean-up of unused rooms
 public/            The browser app (Preact + htm, no build step)
 public/shared/     cards.json, read by both the server and the browser
 scripts/bots.js    Bot players for testing
@@ -109,11 +110,11 @@ scripts/bots.js    Bot players for testing
 
 The server is the only source of truth. Each player receives a view of the game with other players' hands hidden, so nobody can peek at cards through the browser's dev tools.
 
-There is no database. Cards ship with the code; rooms, including the cards players add, live in server memory for 30 minutes after the last player leaves. A server restart ends open games.
+There is no database. Cards ship with the code; rooms, including the cards players add, live in server memory for 30 minutes after the last player leaves (5 minutes if nobody ever joined). The server holds at most 2,000 rooms, and each IP address can create 10 rooms per 10 minutes, so a script can't fill it up. A server restart ends open games.
 
 ## Deploying
 
-The game needs one long-running Node.js process, because rooms live in memory and players stay connected over WebSockets. Hosts like Render, Railway or Fly.io work as-is: set the start command to `npm start`; the server reads the `PORT` environment variable. Run a single instance, since rooms aren't shared between servers.
+The game needs one long-running Node.js process, because rooms live in memory and players stay connected over WebSockets. Hosts like Render, Railway or Fly.io work as-is: set the start command to `npm start`; the server reads the `PORT` environment variable. Run a single instance, since rooms aren't shared between servers. On Render the room limit reads the visitor's address from Cloudflare's `CF-Connecting-IP` header; on other hosts it uses the connection's address, so behind another proxy every visitor would share one limit.
 
 ## License
 

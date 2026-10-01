@@ -5,7 +5,7 @@ import { MY_JOB } from './cards.js';
 import { useLang, JobCard, QualCard, Countdown, CopyLinkButton } from './ui.js';
 
 const IN_GAME = ['prep', 'interview', 'decision', 'tiebreak', 'result'];
-const VOTING_PHASES = ['decision', 'tiebreak', 'result'];
+const VOTING_PHASES = ['decision', 'tiebreak'];
 
 function derive(view) {
   const byId = Object.fromEntries(view.players.map((p) => [p.id, p]));
@@ -25,11 +25,11 @@ function derive(view) {
   };
 }
 
-export function Table({ view, act, offset }) {
+export function Table({ view, act, flash, offset }) {
   const d = derive(view);
   let board;
   if (view.phase === 'over') board = html`<${GameOver} view=${view} d=${d} act=${act} />`;
-  else if (view.phase === 'prep') board = html`<${Prep} view=${view} d=${d} act=${act} offset=${offset} />`;
+  else if (view.phase === 'prep') board = html`<${Prep} view=${view} d=${d} act=${act} flash=${flash} offset=${offset} />`;
   else if (view.phase === 'interview') board = html`<${Interview} view=${view} d=${d} act=${act} offset=${offset} />`;
   else if (view.phase === 'decision') board = html`<${Decision} view=${view} d=${d} act=${act} />`;
   else if (view.phase === 'tiebreak') board = html`<${Tiebreak} view=${view} d=${d} act=${act} />`;
@@ -74,29 +74,39 @@ function PhaseHead({ title, help, children }) {
   `;
 }
 
+// For players who joined mid-round. Nobody gets dealt in after the final round.
+const spectatingText = (view, T) => T(view.roundNumber >= view.totalRounds ? 'spectatingFinal' : 'spectating');
+
 // ---------- résumé building ----------
 
-function Prep({ view, d, act, offset }) {
+function Prep({ view, d, act, flash, offset }) {
   const { T } = useLang();
   const r = d.r;
-  // { from: 'hand' | 'pool', idx }
+  const zones = { hand: r.hand, pool: r.pool };
+  // { from: 'hand' | 'pool', card }. Kept by card, not position: other applicants swap
+  // with the pool too, and the selection must not jump to whatever card lands in that spot.
   const [selected, setSelected] = useState(null);
   const me = d.byId[view.me];
   const locked = me?.ready;
+  const selectedGone = Boolean(selected) && !zones[selected.from].includes(selected.card);
 
   useEffect(() => {
-    if (locked) setSelected(null);
-  }, [locked]);
+    if (selectedGone && !locked) flash(T('cardTaken'));
+    if (locked || selectedGone) setSelected(null);
+  }, [locked, selectedGone]);
 
   function tap(from, idx) {
     if (!d.isApplicant || locked) return;
+    const card = zones[from][idx];
     if (!selected || selected.from === from) {
-      setSelected(selected?.from === from && selected.idx === idx ? null : { from, idx });
+      setSelected(selected?.from === from && selected.card === card ? null : { from, card });
       return;
     }
-    const handIdx = from === 'hand' ? idx : selected.idx;
-    const poolIdx = from === 'pool' ? idx : selected.idx;
+    const otherIdx = zones[selected.from].indexOf(selected.card);
     setSelected(null);
+    if (otherIdx === -1) return;
+    const handIdx = from === 'hand' ? idx : otherIdx;
+    const poolIdx = from === 'pool' ? idx : otherIdx;
     act('game:swap', { handIdx, poolIdx, card: r.pool[poolIdx] });
   }
 
@@ -109,7 +119,7 @@ function Prep({ view, d, act, offset }) {
   let help = '';
   if (d.isApplicant) [title, help] = [T('prepTitle'), T('prepHelp')];
   else if (d.isEmployer) [title, help] = [T('prepEmployerTitle'), T('prepEmployerHelp')];
-  else help = T('spectating');
+  else help = spectatingText(view, T);
 
   return html`
     <div class="phase">
@@ -123,7 +133,7 @@ function Prep({ view, d, act, offset }) {
           (id, i) => html`<${QualCard}
             key=${id}
             id=${id}
-            selected=${selected?.from === 'pool' && selected.idx === i}
+            selected=${selected?.from === 'pool' && selected.card === id}
             onClick=${clickable ? () => tap('pool', i) : null}
           />`,
         )}
@@ -138,7 +148,7 @@ function Prep({ view, d, act, offset }) {
               (id, i) => html`<${QualCard}
                 key=${id}
                 id=${id}
-                selected=${selected?.from === 'hand' && selected.idx === i}
+                selected=${selected?.from === 'hand' && selected.card === id}
                 onClick=${clickable ? () => tap('hand', i) : null}
               />`,
             )}
@@ -256,13 +266,14 @@ function ResumeList({ view, d, act, ids, compact = false, actions }) {
   </div>`;
 }
 
-function VoteStatus({ d }) {
+function VoteStatus({ view, d }) {
   const { T } = useLang();
   const r = d.r;
   if (!r.voting || r.skipped) return null;
-  return html`<p class="status-line">
-    ${T('votesCast', { n: r.votesCast, total: r.voters })}${d.canVote && !r.myVote ? ` ${T('voteHelp')}` : ''}
-  </p>`;
+  let hint = '';
+  if (d.canVote && !r.myVote) hint = T('voteHelp');
+  else if (view.me === d.decider && r.notVoted.length > 0) hint = T('votesMissing', { names: r.notVoted.map(d.nameOf).join(', ') });
+  return html`<p class="status-line">${T('votesCast', { n: r.votesCast, total: r.voters })}${hint && ` ${hint}`}</p>`;
 }
 
 // ---------- interviews ----------
@@ -280,7 +291,7 @@ function Interview({ view, d, act, offset }) {
   let help = '';
   if (isMe) help = T('yourTurnHelp');
   else if (d.isEmployer) help = T('employerAsk');
-  else if (!d.isApplicant) help = T('spectating');
+  else if (!d.isApplicant) help = spectatingText(view, T);
 
   return html`
     <div class="phase">
@@ -310,10 +321,18 @@ function Interview({ view, d, act, offset }) {
 
 // ---------- hiring ----------
 
-function HireButton({ act, id }) {
+// Hiring closes the vote, so with votes still missing the first tap only asks to confirm.
+function HireButton({ act, d, id }) {
   const { T } = useLang();
-  return html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => act('game:hire', { playerId: id })}>
-    ${T('hire')}
+  const [asking, setAsking] = useState(false);
+  const votesMissing = d.r.voting && !d.r.skipped && d.r.notVoted.length > 0;
+  const confirm = asking && votesMissing;
+  function hire() {
+    if (votesMissing && !asking) return setAsking(true);
+    act('game:hire', { playerId: id });
+  }
+  return html`<button type="button" class="btn btn-sm ${confirm ? 'btn-danger' : 'btn-primary'}" onClick=${hire}>
+    ${confirm ? T('hireAnyway') : T('hire')}
   </button>`;
 }
 
@@ -334,7 +353,7 @@ function Decision({ view, d, act }) {
   return html`
     <div class="phase">
       <${PhaseHead} title=${T('decisionTitle')} help=${help} />
-      <${VoteStatus} d=${d} />
+      <${VoteStatus} view=${view} d=${d} />
       <${ResumeList}
         view=${view}
         d=${d}
@@ -353,7 +372,7 @@ function Decision({ view, d, act }) {
             >
               ${chosen.includes(id) ? '✓ ' : ''}${T('finalist')}
             </button>`}
-            <${HireButton} act=${act} id=${id} />
+            <${HireButton} act=${act} d=${d} id=${id} />
           `}
       />
       ${canHire &&
@@ -390,13 +409,13 @@ function Tiebreak({ view, d, act }) {
       <${PhaseHead} title=${T('tiebreakTitle')} help=${help} />
       ${waiting.length > 0 &&
       html`<p class="status-line">${T('tiebreakWaiting', { names: waiting.map(d.nameOf).join(', ') })}</p>`}
-      <${VoteStatus} d=${d} />
+      <${VoteStatus} view=${view} d=${d} />
       <${ResumeList}
         view=${view}
         d=${d}
         act=${act}
         ids=${r.finalists}
-        actions=${(id) => canHire && html`<${HireButton} act=${act} id=${id} />`}
+        actions=${(id) => canHire && html`<${HireButton} act=${act} d=${d} id=${id} />`}
       />
       <${ResumeList} view=${view} d=${d} act=${act} ids=${others} compact />
     </div>
@@ -422,7 +441,6 @@ function Result({ view, d, act }) {
       <${PhaseHead} title=${winner ? T('gotTheJob', { name: d.nameOf(winner) }) : T('nobodyHired')} />
       ${winner && html`<${Resume} view=${view} d=${d} id=${winner} act=${act} stamp />`}
       ${favorite && html`<p class="favorite-line"><span aria-hidden="true">★</span> ${favorite}</p>`}
-      ${d.canVote && !r.skipped && html`<p class="status-line">${T('voteStillOpen')}</p>`}
       <div class="actions">
         ${canContinue
           ? html`<button type="button" class="btn btn-primary btn-lg" onClick=${() => act('game:nextRound')}>

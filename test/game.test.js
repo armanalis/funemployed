@@ -55,13 +55,18 @@ test('first joiner is host; reconnect by token keeps the seat', () => {
   assert.equal(room.players.length, 3);
 });
 
-test('an offline seat can be reclaimed by name; duplicate names get a suffix', () => {
+test('an offline seat can be reclaimed by name with its points; duplicate names get a suffix', () => {
   const { room, players } = setup();
-  room.leave(players[1].id);
-  const back = room.join(null, 'ece');
-  assert.equal(back.id, players[1].id);
+  room.startGame(players[0].id);
+  playRound(room);
+  const winner = room.getPlayer(room.round.winnerId);
+  room.nextRound(room.round.employerId);
+  room.leave(winner.id);
+  const back = room.join(null, ` ${winner.name.toLowerCase()} `);
+  assert.equal(back.id, winner.id, 'same seat, e.g. from another device');
+  assert.equal(back.jobs.length, 1, 'points are kept');
   const dupe = room.join(null, 'Ali');
-  assert.equal(dupe.name, 'Ali 2');
+  assert.equal(dupe.name, 'Ali 2', 'a connected player\'s name is not taken over');
 });
 
 test('game needs 3 connected players and only the host can start it', () => {
@@ -187,6 +192,8 @@ test('settings are validated and host-only', () => {
   assert.throws(() => room.updateSettings(players[1].id, { laps: 1 }), /host_only/);
   assert.throws(() => room.updateSettings(players[0].id, { laps: 9 }), /bad_setting/);
   assert.throws(() => room.updateSettings(players[0].id, { blind: 'yes' }), /bad_setting/);
+  assert.throws(() => room.updateSettings(players[0].id, null), /bad_setting/);
+  assert.throws(() => room.updateSettings(players[0].id, 'laps'), /bad_setting/);
   room.updateSettings(players[0].id, { laps: 1, pitchSeconds: 90 });
   assert.equal(room.settings.laps, 1);
   assert.equal(room.settings.pitchSeconds, 90);
@@ -214,6 +221,37 @@ test('host can skip a stuck round; late joiners extend the game', () => {
   assert.equal(room.round.winnerId, null);
   room.nextRound(players[0].id);
   assert.equal(room.phase, 'prep');
+});
+
+test('late joiners hire as many times as everyone else', () => {
+  const { room, players } = setup();
+  room.startGame(players[0].id);
+  const employers = [];
+  for (let i = 0; room.phase !== 'over'; i++) {
+    if (i === 3) room.join(null, 'Latecomer');
+    employers.push(room.getPlayer(room.round.employerId).name);
+    playRound(room);
+    room.nextRound(room.round.employerId);
+  }
+  assert.equal(employers.length, 8);
+  for (const name of ['Ali', 'Ece', 'Mert', 'Latecomer']) {
+    assert.equal(employers.filter((e) => e === name).length, 2, `${name} hires twice`);
+  }
+});
+
+test('someone joining during the final round does not add another final round', () => {
+  const { room, players } = setup();
+  room.startGame(players[0].id);
+  for (let i = 0; i < 5; i++) {
+    playRound(room);
+    room.nextRound(room.round.employerId);
+  }
+  assert.equal(room.round.job, MY_JOB);
+  room.join(null, 'Latecomer');
+  assert.equal(room.totalRounds, 6);
+  playRound(room);
+  room.nextRound(room.round.employerId);
+  assert.equal(room.phase, 'over');
 });
 
 test('every card has text in every language and a unique id', () => {
@@ -335,10 +373,13 @@ test('audience vote: hidden until the hire, star to the clear favorite', () => {
   room.vote(z, y); // changing your mind is fine
   assert.deepEqual(room.view(x).round.voteCounts, {}, 'no counts before the hire');
   assert.equal(room.view(x).round.votesCast, 2);
+  assert.deepEqual(room.view(r.employerId).round.notVoted, [y], 'the employer sees who still has to vote');
   assert.equal(room.view(x).round.myVote, y);
 
   room.hire(r.employerId, x);
   assert.deepEqual(room.view(x).round.voteCounts, { [y]: 2 });
+  assert.equal(room.view(x).round.fanFavoriteId, y);
+  assert.throws(() => room.vote(z, x), /wrong_phase/, 'votes are final once the counts are shown');
   assert.equal(room.view(x).round.fanFavoriteId, y);
   room.nextRound(r.employerId);
   assert.equal(room.getPlayer(y).stars, 1);
@@ -367,6 +408,24 @@ test('audience vote: ties give no star; off with 2 applicants or when disabled',
   off.room.startGame(off.players[0].id);
   toDecision(off.room);
   assert.throws(() => off.room.vote(off.room.round.applicants[0], off.room.round.applicants[1]), /voting_off/);
+});
+
+test('a skipped round does not use up the employer\'s turn', () => {
+  const { room, players } = setup();
+  room.startGame(players[0].id);
+  const skipped = room.round.employerId;
+  room.skipRound(players[0].id);
+  assert.equal(room.totalRounds, 7);
+  room.nextRound(players[0].id);
+  const hired = [];
+  while (room.phase !== 'over') {
+    hired.push(room.round.employerId);
+    playRound(room);
+    room.nextRound(room.round.employerId);
+  }
+  assert.equal(hired.length, 6);
+  for (const id of ids(players)) assert.equal(hired.filter((e) => e === id).length, 2);
+  assert.equal(hired.filter((e) => e === skipped).length, 2, 'the skipped employer still hires twice');
 });
 
 test('a skipped round awards no star', () => {

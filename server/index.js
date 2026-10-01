@@ -2,12 +2,15 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
-import { Room, GameError } from './game.js';
+import { GameError } from './game.js';
+import { Rooms } from './rooms.js';
 
 const PORT = Number(process.env.PORT) || 3000;
-const ROOM_IDLE_MS = 30 * 60 * 1000;
-// No I, O, L or U: codes are read aloud and typed on phones.
-const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTVWXYZ';
+
+// On Render, Cloudflare sits in front of the server and puts the visitor's address in this
+// header, overwriting any value the visitor sends. Elsewhere the header could be faked,
+// so use the connection's own address.
+const clientIp = (socket) => (process.env.RENDER && socket.handshake.headers['cf-connecting-ip']) || socket.handshake.address;
 
 const fromRoot = (path) => fileURLToPath(new URL(`../${path}`, import.meta.url));
 
@@ -22,17 +25,7 @@ app.get(/^\/[A-Za-z]{4}\/?$/, (_req, res) => res.sendFile(fromRoot('public/index
 
 const server = createServer(app);
 const io = new Server(server);
-const rooms = new Map();
-
-function newCode() {
-  let code;
-  do {
-    code = Array.from({ length: 4 }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('');
-  } while (rooms.has(code));
-  return code;
-}
-
-const normalizeCode = (code) => String(code ?? '').trim().toUpperCase();
+const rooms = new Rooms();
 
 function broadcast(room) {
   const socketIds = io.sockets.adapter.rooms.get(room.code) ?? [];
@@ -73,18 +66,21 @@ io.on('connection', (socket) => {
   }
 
   socket.on('room:create', (_payload, ack) => {
-    const code = newCode();
-    rooms.set(code, new Room(code));
-    reply(ack, { code });
+    try {
+      reply(ack, { code: rooms.create(clientIp(socket)).code });
+    } catch (err) {
+      reply(ack, { error: err instanceof GameError ? err.message : 'server_error' });
+      if (!(err instanceof GameError)) console.error(err);
+    }
   });
 
   socket.on('room:peek', (payload, ack) => {
-    const room = rooms.get(normalizeCode(payload?.code));
+    const room = rooms.get(payload?.code);
     reply(ack, room ? { exists: true, players: room.players.length } : { exists: false });
   });
 
   socket.on('room:join', (payload, ack) => {
-    const room = rooms.get(normalizeCode(payload?.code));
+    const room = rooms.get(payload?.code);
     if (!room) return reply(ack, { error: 'room_not_found' });
     try {
       if (socket.data.code) leaveCurrentRoom();
@@ -148,15 +144,11 @@ io.on('connection', (socket) => {
 
 // Forget rooms nobody has touched for a while.
 setInterval(() => {
-  const cutoff = Date.now() - ROOM_IDLE_MS;
-  for (const [code, room] of rooms) {
-    if (room.connectedPlayers().length === 0 && room.lastActive < cutoff) {
-      clearTimeout(timers.get(code));
-      timers.delete(code);
-      rooms.delete(code);
-    }
+  for (const code of rooms.prune()) {
+    clearTimeout(timers.get(code));
+    timers.delete(code);
   }
-}, 5 * 60 * 1000).unref();
+}, 60 * 1000).unref();
 
 server.listen(PORT, () => {
   console.log(`Funemployed running at http://localhost:${PORT}`);

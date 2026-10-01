@@ -109,6 +109,10 @@ export class Room {
     return !['lobby', 'over'].includes(this.phase);
   }
 
+  isFinalRound() {
+    return this.inGame() && this.roundNumber >= this.totalRounds;
+  }
+
   laps() {
     return this.settings.laps || (this.players.length <= 6 ? 2 : 1);
   }
@@ -119,7 +123,8 @@ export class Room {
     if (!player) {
       const name = cleanName(rawName);
       if (!name) fail('name_required');
-      // Someone who lost their session can take back their offline seat by name.
+      // Someone who lost their session (or switched devices) takes back their offline seat by name,
+      // with their cards and points.
       player = this.players.find(
         (p) => p.sockets === 0 && p.name.toLocaleLowerCase('tr') === name.toLocaleLowerCase('tr'),
       );
@@ -132,12 +137,13 @@ export class Room {
           sockets: 0,
           jobs: [],
           stars: 0,
+          turns: 0,
           hand: [],
           ready: false,
         };
         this.players.push(player);
-        // Give late joiners their turn as employer.
-        if (this.inGame()) this.totalRounds += this.laps();
+        // Give late joiners their turn as employer, unless the final round is already on.
+        if (this.inGame() && !this.isFinalRound()) this.totalRounds += this.laps();
       }
     }
     player.sockets += 1;
@@ -175,6 +181,7 @@ export class Room {
   updateSettings(byId, patch = {}) {
     this.requireHost(byId);
     if (this.phase !== 'lobby' && this.phase !== 'over') fail('wrong_phase');
+    if (typeof patch !== 'object' || patch === null) fail('bad_setting');
     const next = { ...this.settings };
     const pick = (key, options) => {
       if (!(key in patch)) return;
@@ -251,6 +258,7 @@ export class Room {
     for (const p of this.players) {
       p.jobs = [];
       p.stars = 0;
+      p.turns = 0;
       p.hand = [];
       p.ready = false;
     }
@@ -269,10 +277,15 @@ export class Room {
   startRound() {
     if (this.connectedPlayers().length < MIN_PLAYERS) fail('not_enough_players');
     const n = this.players.length;
-    do {
-      this.employerIdx = (this.employerIdx + 1) % n;
-    } while (this.players[this.employerIdx].sockets === 0);
+    // Whoever has hired the fewest times goes next, ties clockwise. That way late joiners and
+    // players who were offline on their turn still get as many turns as everyone else.
+    const seats = range(n)
+      .map((i) => (this.employerIdx + 1 + i) % n)
+      .filter((i) => this.players[i].sockets > 0);
+    const fewest = Math.min(...seats.map((i) => this.players[i].turns));
+    this.employerIdx = seats.find((i) => this.players[i].turns === fewest);
     const employer = this.players[this.employerIdx];
+    employer.turns += 1;
 
     // Applicants go clockwise, starting next to the employer.
     const applicants = range(n - 1)
@@ -469,9 +482,10 @@ export class Room {
   }
 
   // Everyone except the employer picks the funniest pitch; the fan favorite earns a star.
+  // Voting closes with the hire, so nobody can change the outcome after seeing the counts.
   vote(playerId, targetId) {
     if (!this.votingOn()) fail('voting_off');
-    if (!['decision', 'tiebreak', 'result'].includes(this.phase)) fail('wrong_phase');
+    if (!['decision', 'tiebreak'].includes(this.phase)) fail('wrong_phase');
     const r = this.round;
     if (!this.getPlayer(playerId) || playerId === r.employerId) fail('not_allowed');
     if (targetId === playerId) fail('no_self_vote');
@@ -504,11 +518,15 @@ export class Room {
 
   // ---------- ending rounds and games ----------
 
+  // The employer of a skipped round never got to hire, so they keep their turn
+  // and the game gets one more round for it.
   skipRound(byId) {
     this.requireHost(byId);
     if (!['prep', 'interview', 'decision', 'tiebreak'].includes(this.phase)) fail('wrong_phase');
     this.round.winnerId = null;
     this.round.skipped = true;
+    this.getPlayer(this.round.employerId).turns -= 1;
+    this.totalRounds += 1;
     this.phase = 'result';
   }
 
@@ -538,6 +556,7 @@ export class Room {
     for (const p of this.players) {
       p.jobs = [];
       p.stars = 0;
+      p.turns = 0;
       p.hand = [];
       p.ready = false;
     }
@@ -566,6 +585,7 @@ export class Room {
       const voting = this.votingOn();
       // Vote counts stay hidden until the employer has decided, so they can't sway the hire.
       const showVotes = voting && this.phase === 'result';
+      const voters = this.players.filter((p) => p.sockets > 0 && p.id !== r.employerId);
       round = {
         employerId: r.employerId,
         job: r.job,
@@ -584,7 +604,9 @@ export class Room {
         voting,
         myVote: r.votes[playerId] ?? null,
         votesCast: Object.keys(r.votes).length,
-        voters: this.players.filter((p) => p.sockets > 0 && p.id !== r.employerId).length,
+        voters: voters.length,
+        // Who still has to vote (not what anyone voted), so the employer can wait for them.
+        notVoted: voters.filter((p) => !(p.id in r.votes)).map((p) => p.id),
         voteCounts: showVotes ? this.voteCounts() : {},
         fanFavoriteId: showVotes ? this.fanFavoriteId() : null,
       };

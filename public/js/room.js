@@ -6,13 +6,13 @@ import { socket, call } from './net.js';
 import { useLang, navigate, storage, CopyLinkButton, Toast } from './ui.js';
 import { Table, Roster } from './table.js';
 
-const session = storage('session');
+// Seats are kept by a token on this device, so closing the tab or the browser doesn't lose yours.
 const local = storage('local');
 
 export function RoomScreen({ code }) {
   const { lang, T } = useLang();
   const tokenKey = `fe:token:${code}`;
-  // checking → (missing | name) → joined
+  // checking → (missing | name) → joined → (closed, if the room goes away)
   const [status, setStatus] = useState('checking');
   const [view, setView] = useState(null);
   const [online, setOnline] = useState(true);
@@ -28,15 +28,27 @@ export function RoomScreen({ code }) {
   }
 
   async function join(name) {
-    const res = await call('room:join', { code, token: session.get(tokenKey), name });
+    const res = await call('room:join', { code, token: local.get(tokenKey), name });
     if (res.token) {
-      session.set(tokenKey, res.token);
+      local.set(tokenKey, res.token);
       joined.current = true;
       setStatus('joined');
       return null;
     }
-    if (res.error === 'room_not_found') setStatus('missing');
+    if (res.error === 'room_not_found') {
+      // Having a seat here means the room existed and has since closed (server restart or idle timeout).
+      const hadSeat = joined.current || Boolean(local.get(tokenKey));
+      joined.current = false;
+      local.set(tokenKey, null);
+      setStatus(hadSeat ? 'closed' : 'missing');
+    }
     return res.error;
+  }
+
+  async function newRoom() {
+    const res = await call('room:create');
+    if (res.code) navigate(`/${res.code}`);
+    else flash(errorText(lang, res.error));
   }
 
   useEffect(() => {
@@ -55,10 +67,10 @@ export function RoomScreen({ code }) {
     socket.on('disconnect', onDisconnect);
 
     (async () => {
-      if (session.get(tokenKey)) {
+      if (local.get(tokenKey)) {
         const error = await join();
         if (!error) return;
-        session.set(tokenKey, null);
+        local.set(tokenKey, null);
         if (error === 'room_not_found') return;
       }
       const peek = await call('room:peek', { code });
@@ -78,7 +90,7 @@ export function RoomScreen({ code }) {
   useEffect(() => {
     if (status === 'joined' && view && !view.players.some((p) => p.id === view.me)) {
       joined.current = false;
-      session.set(tokenKey, null);
+      local.set(tokenKey, null);
       call('room:leave');
       setView(null);
       setStatus('name');
@@ -99,12 +111,18 @@ export function RoomScreen({ code }) {
       <p>${errorText(lang, 'room_not_found', { code })}</p>
       <button type="button" class="btn btn-primary" onClick=${() => navigate('/')}>${T('backHome')}</button>
     </div>`;
+  } else if (status === 'closed') {
+    body = html`<div class="panel narrow">
+      <p>${T('roomClosed', { code })}</p>
+      <button type="button" class="btn btn-primary" onClick=${newRoom}>${T('createRoom')}</button>
+      <button type="button" class="btn btn-ghost" onClick=${() => navigate('/')}>${T('backHome')}</button>
+    </div>`;
   } else if (status === 'name') {
     body = html`<${NameForm} code=${code} onJoin=${join} />`;
   } else if (view.phase === 'lobby') {
     body = html`<${Lobby} view=${view} act=${act} />`;
   } else {
-    body = html`<${Table} view=${view} act=${act} offset=${offset.current} />`;
+    body = html`<${Table} view=${view} act=${act} flash=${flash} offset=${offset.current} />`;
   }
 
   return html`
