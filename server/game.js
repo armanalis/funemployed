@@ -58,6 +58,10 @@ function cleanText(raw, max) {
 
 export const cleanName = (raw) => cleanText(raw, NAME_MAX);
 
+// Compares names and card texts regardless of case, in Turkish and English alike.
+// Turkish lowercases I to ı, so "ALI" only matches "Ali" once ı and i count as the same letter.
+const matchKey = (text) => text.toLocaleLowerCase('tr').replace(/ı/g, 'i');
+
 export class Room {
   constructor(code, { rng = Math.random, now = Date.now } = {}) {
     this.code = code;
@@ -126,7 +130,7 @@ export class Room {
       // Someone who lost their session (or switched devices) takes back their offline seat by name,
       // with their cards and points.
       player = this.players.find(
-        (p) => p.sockets === 0 && p.name.toLocaleLowerCase('tr') === name.toLocaleLowerCase('tr'),
+        (p) => p.sockets === 0 && matchKey(p.name) === matchKey(name),
       );
       if (!player) {
         if (this.players.length >= MAX_PLAYERS) fail('room_full');
@@ -152,11 +156,11 @@ export class Room {
   }
 
   uniqueName(name) {
-    const taken = new Set(this.players.map((p) => p.name.toLocaleLowerCase('tr')));
-    if (!taken.has(name.toLocaleLowerCase('tr'))) return name;
+    const taken = new Set(this.players.map((p) => matchKey(p.name)));
+    if (!taken.has(matchKey(name))) return name;
     for (let n = 2; ; n++) {
       const candidate = `${name.slice(0, NAME_MAX - 3)} ${n}`;
-      if (!taken.has(candidate.toLocaleLowerCase('tr'))) return candidate;
+      if (!taken.has(matchKey(candidate))) return candidate;
     }
   }
 
@@ -206,8 +210,8 @@ export class Room {
     if (!text) fail('card_empty');
     if (text.length > CUSTOM_MAX_LENGTH) fail('card_too_long');
     if (list.length >= CUSTOM_MAX_PER_KIND) fail('custom_limit');
-    const key = text.toLocaleLowerCase('tr');
-    if (list.some((c) => c.text.toLocaleLowerCase('tr') === key)) fail('card_exists');
+    const key = matchKey(text);
+    if (list.some((c) => matchKey(c.text) === key)) fail('card_exists');
     list.push({ id: this.nextCustomId++, text, by: author.name, byId: author.id });
   }
 

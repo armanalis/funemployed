@@ -69,6 +69,17 @@ test('an offline seat can be reclaimed by name with its points; duplicate names 
   assert.equal(dupe.name, 'Ali 2', 'a connected player\'s name is not taken over');
 });
 
+test('names match whatever the case, including I and İ', () => {
+  const { room, players } = setup(['Ali', 'İrem', 'Işık']);
+  for (const p of players) room.leave(p.id);
+  assert.equal(room.join(null, 'ALI').id, players[0].id);
+  assert.equal(room.join(null, 'irem').id, players[1].id);
+  assert.equal(room.join(null, 'IŞIK').id, players[2].id);
+  assert.equal(room.join(null, 'ali').name, 'ali 2', 'Ali is connected again, so this is someone new');
+  room.addCustomCard(players[0].id, 'qual', 'Ice Cream Inspector');
+  assert.throws(() => room.addCustomCard(players[0].id, 'qual', 'ICE CREAM INSPECTOR'), /card_exists/);
+});
+
 test('game needs 3 connected players and only the host can start it', () => {
   const { room, players } = setup(['Ali', 'Ece']);
   assert.throws(() => room.startGame(players[0].id), GameError);
